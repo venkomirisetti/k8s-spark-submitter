@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "labels": {
+      "driver-only": "true"
+    },
+    "annotations": {
+      "test-annotation": "driver-annotation-value"
+    }
+  },
+  "spec": {
+    "containers": []
+  }
+}

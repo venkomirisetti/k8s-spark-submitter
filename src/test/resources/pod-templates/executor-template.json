@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "labels": {
+      "custom-label": "executor-template"
+    }
+  },
+  "spec": {
+    "containers": [{
+      "name": "spark-kubernetes-executor",
+      "resources": {
+        "requests": {
+          "memory": "512Mi",
+          "cpu": "500m"
+        },
+        "limits": {
+          "memory": "1Gi",
+          "cpu": "1"
+        }
+      }
+    }],
+    "nodeSelector": {
+      "spark-role": "executor"
+    },
+    "tolerations": [{
+      "key": "spark-executor",
+      "operator": "Equal",
+      "value": "true",
+      "effect": "NoSchedule"
+    }]
+  }
+}

@@ -1,0 +1,36 @@
+Configuration:
+  status: WARN
+  monitorInterval: 30
+  
+  Properties:
+    Property:
+      - name: LOG_PATTERN
+        value: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSX}\t%-5level\t%F:%L\t%msg%n"
+  
+  Appenders:
+    Console:
+      name: Console
+      target: SYSTEM_OUT
+      PatternLayout:
+        Pattern: "${LOG_PATTERN}"
+  
+  Loggers:
+    Logger:
+      - name: io.spark.k8s.submit
+        level: "${env:LOG_LEVEL_APP:-INFO}"
+        additivity: false
+        AppenderRef:
+          - ref: Console
+      - name: org.apache.spark.deploy
+        level: "${env:LOG_LEVEL_SPARK_DEPLOY:-INFO}"
+      - name: io.fabric8.kubernetes.client
+        level: "${env:LOG_LEVEL_K8S:-ERROR}"
+      - name: org.sparkproject.jetty
+        level: ERROR
+      - name: org.apache.spark
+        level: ERROR
+    
+    Root:
+      level: "${env:LOG_LEVEL_ROOT:-ERROR}"
+      AppenderRef:
+        - ref: Console

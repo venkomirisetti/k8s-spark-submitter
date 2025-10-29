@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "labels": {
+      "custom-label": "driver-template"
+    }
+  },
+  "spec": {
+    "containers": [{
+      "name": "spark-kubernetes-driver",
+      "resources": {
+        "requests": {
+          "memory": "1Gi",
+          "cpu": "1"
+        },
+        "limits": {
+          "memory": "2Gi",
+          "cpu": "2"
+        }
+      }
+    }],
+    "nodeSelector": {
+      "spark-role": "driver"
+    },
+    "tolerations": [{
+      "key": "spark-driver",
+      "operator": "Equal",
+      "value": "true",
+      "effect": "NoSchedule"
+    }]
+  }
+}

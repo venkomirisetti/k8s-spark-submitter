@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "labels": {
+      "executor-only": "true"
+    },
+    "annotations": {
+      "test-annotation": "executor-annotation-value"
+    }
+  },
+  "spec": {
+    "containers": []
+  }
+}
