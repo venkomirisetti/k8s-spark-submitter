@@ -23,13 +23,13 @@ A **fire-and-forget** REST API that submits Spark jobs to Kubernetes and returns
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌─────────────┐    ┌────────────────────────┐    ┌───────────────────┐ │
-│  │   REST API  │───▶│   SparkSubmitter       │───▶│   SfSparkClient   │ │
-│  │  (Spring)   │    │      (Service)         │    │  (Spark Internal) │ │
+│  │   REST API  │───▶│   SparkSubmitter       │───▶│  K8sSparkClient   │ │
+│  │   (Jetty)   │    │      (Service)         │    │  (Spark Internal) │ │
 │  └─────────────┘    └────────────────────────┘    └───────────────────┘ │
 │                              │                            │             │
 │                              ▼                            ▼             │
 │                     ┌────────────────┐          ┌──────────────────┐    │
-│                     │SfSparkSubmit   │          │KubernetesDriver  │    │
+│                     │K8sSparkSubmit  │          │KubernetesDriver  │    │
 │                     │  ArgsParser    │          │    Builder       │    │
 │                     │(Spark Internal)│          │ (Spark Internal) │    │
 │                     └────────────────┘          └──────────────────┘    │
@@ -63,14 +63,14 @@ The service uses Spark's internal (package-private) classes:
 | `KubernetesDriverBuilder` | `org.apache.spark.deploy.k8s.submit` | Build driver pod spec |
 | `KubernetesClientUtils` | `org.apache.spark.deploy.k8s.submit` | Build ConfigMaps |
 
-**Note:** We use Spark's parsing and spec building, but control resource creation ourselves in `SfSparkClient` to fix Spark's ConfigMap singleton naming issue (which causes collisions when submitting multiple jobs from the same JVM).
+**Note:** We use Spark's parsing and spec building, but control resource creation ourselves in `K8sSparkClient` to fix Spark's ConfigMap singleton naming issue (which causes collisions when submitting multiple jobs from the same JVM).
 
 ## Submission Flow
 
 ```
-1. POST /api/v1/spark/submit
+1. POST /spark-submit
 
-2. Parse Arguments (SfSparkSubmitArgsParser)
+2. Parse Arguments (K8sSparkSubmitArgsParser)
    ├─▶ SparkSubmitArguments parses CLI args
    └─▶ SparkSubmit.prepareSubmitEnvironment builds SparkConf
 
@@ -79,7 +79,7 @@ The service uses Spark's internal (package-private) classes:
    ├─▶ Generate sparkAppId and driverPodName
    └─▶ Write pod templates to temp files (if provided)
 
-4. Create Resources (SfSparkClient)
+4. Create Resources (K8sSparkClient)
    ├─▶ KubernetesDriverBuilder builds driver spec
    ├─▶ Build ConfigMap with spark.properties
    ├─▶ Build driver pod with ConfigMap volume
@@ -105,27 +105,18 @@ When the driver pod is deleted, Kubernetes garbage collection automatically remo
 
 ## API
 
+All endpoints served on a single port (default `8080`).
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/spark/submit` | Submit a Spark job |
-| POST | `/api/v1/spark/selftest` | Sidecar startup probe. Runs the submit path with Kubernetes server-side dry-run. Returns 200 on success, 503 when disabled, 422 on submission failure. No request body. |
-
-**Management endpoints** (port 15372):
-
-| Endpoint | Description |
-|----------|-------------|
-| `/manage/health` | Aggregate health (all components) |
-| `/manage/health/liveness` | Liveness probe |
-| `/manage/health/readiness` | Readiness probe |
-| `/manage/prometheus` | Prometheus metrics (text format) |
+| POST | `/spark-submit` | Submit a Spark job |
+| POST | `/spark-submit?dryRun=true` | Validate without creating K8s resources |
+| GET | `/health` | Liveness/readiness probe |
+| GET | `/metrics` | Prometheus metrics (text format) |
 
 ## Metrics
 
-**Endpoint:** `http://<host>:15372/manage/prometheus` (Prometheus text format)
-
-**Flow:** Sidecar scrapes `/manage/prometheus` → Argus (Monitoring Cloud)
-
-The service emits standard platform metrics (JVM, process, Jetty) and the following custom metrics:
+**Endpoint:** `GET /metrics` (Prometheus text format)
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -133,12 +124,6 @@ The service emits standard platform metrics (JVM, process, Jetty) and the follow
 | `spark_submit_request_failure_count` | Counter | Failed requests, tagged by `failure_type` (HTTP status) |
 | `spark_submit_requests_in_flight` | Gauge | Requests currently being processed |
 | `spark_submit_request_latency_seconds` | Histogram | Request latency with configurable buckets |
-| `spark_submit_request_latency_seconds_count` | Counter | Total request count (auto-generated) |
-
-**Configuration:**
-- Histogram buckets configurable via `application.yml` (default: 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s, 30s)
-- Can be customized per environment using profile-specific YAML files
-- Requires `metrics.enableMicrometerMetrics: true` in `application.yml`
 
 ## Request Format
 
@@ -151,12 +136,10 @@ The service emits standard platform metrics (JVM, process, Jetty) and the follow
     "--deploy-mode", "cluster",
     "--name", "my-spark-job",
     "--conf", "spark.kubernetes.namespace=spark-jobs",
-    "--conf", "spark.kubernetes.container.image=spark:3.5.5",
+    "--conf", "spark.kubernetes.container.image=spark:4.0.1",
     "--conf", "spark.kubernetes.authenticate.driver.serviceAccountName=spark",
     "--class", "com.example.SparkApp",
-    "--conf", "spark.executor.instances=3",
-    "s3://bucket/app.jar",
-    "--input", "s3://input"
+    "local:///opt/spark/app.jar"
   ]
 }
 ```
@@ -172,13 +155,11 @@ Pod templates are nested JSON objects (no escaping needed):
     "--deploy-mode", "cluster",
     "--name", "my-spark-job",
     "--conf", "spark.kubernetes.namespace=spark-jobs",
-    "--conf", "spark.kubernetes.container.image=spark:3.5.5",
+    "--conf", "spark.kubernetes.container.image=spark:4.0.1",
     "--class", "com.example.SparkApp",
-    "s3://bucket/app.jar"
+    "local:///opt/spark/app.jar"
   ],
   "driver_pod_template": {
-    "apiVersion": "v1",
-    "kind": "Pod",
     "spec": {
       "containers": [{
         "name": "spark",
@@ -187,8 +168,6 @@ Pod templates are nested JSON objects (no escaping needed):
     }
   },
   "executor_pod_template": {
-    "apiVersion": "v1",
-    "kind": "Pod",
     "spec": {
       "containers": [{
         "name": "spark",
@@ -199,76 +178,82 @@ Pod templates are nested JSON objects (no escaping needed):
 }
 ```
 
-### Optional Arguments
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `--name` | Main class or JAR/Python filename | Application name (optional, auto-generated if not provided) |
-| `--conf spark.kubernetes.namespace` | `default` | Target namespace |
-
-**App Name Defaulting Behavior**:
-- If `--name` is not provided, Spark automatically uses:
-  - **Java/Scala**: Main class name (e.g., `org.apache.spark.examples.SparkPi`)
-  - **Python**: Python file name (e.g., `pi.py`)
-- The app name is sanitized for Kubernetes pod naming (lowercase, special chars replaced)
-
-### Required Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `--conf spark.kubernetes.container.image` | Spark container image for driver and executors |
-
 ## Response Format
 
-### Success Response (201 Created)
+### Success (201 Created)
 
 ```json
 {
   "app_name": "my-spark-job",
   "message": "Spark driver pod created successfully",
-  "submitted_at": "2026-02-04T22:44:02.123456789Z",
+  "submitted_at": "2026-02-04T22:44:02.123Z",
   "spark_app_id": "spark-b992db7da52c42298736dcbb3c9142be",
   "driver_pod_name": "my-spark-job-cff6459c2aa9538c-driver",
+  "driver_pod_uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "namespace": "spark-jobs"
 }
 ```
 
-**Response Fields**:
-- `app_name`: Spark application name (from `--name` or auto-generated)
-- `message`: Success message
-- `submitted_at`: ISO 8601 timestamp with nanosecond precision
-- `spark_app_id`: Unique Spark application ID (format: `spark-{UUID}`)
-- `driver_pod_name`: Kubernetes driver pod name
-- `namespace`: Kubernetes namespace where resources were created
+### Dry-Run Success (200 OK)
+
+Same response format. No K8s resources are created — validates RBAC, schema, quotas via server-side dry-run.
 
 ### Error Responses
 
-#### Validation Error (400 Bad Request)
-Invalid request format or Spark arguments:
-```json
-{
-  "error": "BAD_REQUEST",
-  "message": "Malformed request body",
-  "details": null,
-  "timestamp": "2026-02-04T22:44:01Z"
-}
-```
+| Status | Error Code | When |
+|--------|-----------|------|
+| 400 | `BAD_REQUEST` | Malformed JSON or invalid spark-submit args |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type is not `application/json` |
+| 422 | `SUBMISSION_FAILED` | Valid args but K8s rejected (RBAC, quota, etc.) |
+| 503 | `SERVICE_UNAVAILABLE` | Transient K8s error (retryable: 401, 429, 5xx) |
 
-#### Submission Error (422 Unprocessable Entity)
-Valid request, but Kubernetes submission failed:
-```json
-{
-  "error": "SUBMISSION_FAILED",
-  "message": "Failed to submit: Forbidden",
-  "details": "pods is forbidden: User \"system:serviceaccount:default:spark\" cannot create resource \"pods\" in namespace \"spark-jobs\"",
-  "timestamp": "2026-02-04T22:44:01Z"
-}
-```
+## Configuration
 
-**Note**: The service performs minimal validation - most argument validation is delegated to Spark's internal parser. Kubernetes API errors (permissions, resource quotas, etc.) are returned as submission errors.
+All configuration via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8080` | Server port |
+| `SERVER_ADDRESS` | `0.0.0.0` | Bind address |
+| `SERVER_MAX_THREADS` | `200` | Max Jetty threads |
+| `SHUTDOWN_TIMEOUT_MS` | `30000` | Graceful shutdown timeout |
+| `K8S_CLIENT_CONNECTION_TIMEOUT_MS` | `10000` | K8s API connection timeout |
+| `K8S_CLIENT_REQUEST_TIMEOUT_MS` | `30000` | K8s API request timeout |
+| `K8S_CLIENT_MAX_CONCURRENT_REQUESTS` | `200` | Max parallel K8s API calls |
+| `METRICS_PERCENTILES` | `0.5,0.9,0.99` | Latency histogram percentiles |
+| `METRICS_SLO_MS` | `50,100,250,500,1000,2000,5000,10000,30000` | Histogram bucket boundaries |
 
 ## Building
 
 ```bash
-mvn clean package
+make help       # show all targets
+make build      # compile
+make test       # run tests
+make package    # build JAR (skip tests)
+make image      # build JAR + Docker image
 ```
+
+## Docker
+
+```bash
+# Build with default Spark 4.0.1 base image
+make image
+
+# Build with custom base image
+make image SPARK_IMAGE=my-registry/spark:4.0.1
+```
+
+The service JAR is a thin layer (~1MB) on top of the Spark base image. All Spark/K8s/Jackson dependencies are provided by the base image at runtime.
+
+## Tech Stack
+
+- **Language**: Scala 2.13 on JDK 17
+- **Spark**: 4.0.1 (open-source)
+- **HTTP Server**: Jetty (shaded inside spark-core)
+- **K8s Client**: Fabric8 7.1.0
+- **Metrics**: Micrometer Prometheus
+- **Build**: Maven + scala-maven-plugin
+
+## Credits
+
+Created by **Venkateswarlu Komirisetti**. Built under the Salesforce Spark product, sponsored by [Salesforce](https://www.salesforce.com).
