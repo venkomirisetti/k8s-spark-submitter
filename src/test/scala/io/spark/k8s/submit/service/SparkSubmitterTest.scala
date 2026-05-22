@@ -124,6 +124,29 @@ class SparkSubmitterTest extends AnyFlatSpec
   private def createMockK8sProvider(client: KubernetesClient): KubernetesClientProvider =
     new KubernetesClientProvider(() => client)
 
+  private def createMockSubmitter(): SparkSubmitter = {
+    val mockClient = Mockito.mock(classOf[KubernetesClient])
+    new SparkSubmitter(createMockK8sProvider(mockClient))
+  }
+
+  private def submitExpectingValidationError(request: SparkSubmitRequest): SparkSubmitException = {
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(request) }
+    ex.isValidationError shouldBe true
+    ex
+  }
+
+  private def submitExpectingSubmissionError(request: SparkSubmitRequest): SparkSubmitException = {
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(request) }
+    ex.isValidationError shouldBe false
+    ex
+  }
+
+  private def validArgs: java.util.List[String] = JavaArrays.asList(
+    MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+    ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)
+
   // Integration test setup (KubeAPIServer from fixture)
   override def beforeAll(): Unit = {
     super.beforeAll()  // Calls KubeAPIServerFixture.beforeAll()
@@ -157,174 +180,57 @@ class SparkSubmitterTest extends AnyFlatSpec
   // ==========================================================================
 
   "SparkSubmitter" should "wrap parsing exceptions as validation errors" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(InvalidArgKey, InvalidArgValue))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe true
+    submitExpectingValidationError(SparkSubmitRequest(JavaArrays.asList(InvalidArgKey, InvalidArgValue)))
   }
 
   it should "accept Array[String] arguments via overload" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val args = Array(InvalidArgKey, InvalidArgValue)
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(args)
-    }
-    exception.isValidationError shouldBe true
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(Array(InvalidArgKey, InvalidArgValue)) }
+    ex.isValidationError shouldBe true
   }
 
   it should "require valid master URL" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, InvalidMasterUrl,
-      ClassArg, SparkPiClass,
-      LocalJar
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe true
+    submitExpectingValidationError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, InvalidMasterUrl, ClassArg, SparkPiClass, LocalJar)))
   }
 
   it should "require main class or primary resource" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(MasterArg, DefaultK8sMaster))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe true
+    submitExpectingValidationError(SparkSubmitRequest(JavaArrays.asList(MasterArg, DefaultK8sMaster)))
   }
 
   it should "handle null driver template and null executor template" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster,
-      ClassArg, SparkPiClass,
-      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-      ConfArg, s"$ImageConfKey=$SparkImage",
-      LocalJar
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "handle empty driver template and empty executor template" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      EmptyString,
-      EmptyString
-    )
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(
+      JavaArrays.asList(MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+        ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar),
+      EmptyString, EmptyString))
   }
 
   it should "handle invalid JSON in driver template" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      InvalidJson
-    )
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception should not be null
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(validArgs, InvalidJson)) }
+    ex should not be null
   }
 
   it should "handle invalid JSON in executor template" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      executorPodTemplate = InvalidJsonArray
-    )
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception should not be null
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(validArgs, executorPodTemplate = InvalidJsonArray)) }
+    ex should not be null
   }
 
   it should "handle both driver and executor templates with valid JSON" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      DriverTemplateJson,
-      ExecutorTemplateJson
-    )
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception should not be null
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(validArgs, DriverTemplateJson, ExecutorTemplateJson)) }
+    ex should not be null
   }
 
   it should "generate unique template directories for concurrent submissions" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
+    val submitter = createMockSubmitter()
 
     val request1 = SparkSubmitRequest(
       JavaArrays.asList(MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, ConfArg, s"$NamespaceConfKey=$TestNamespace1",
@@ -347,42 +253,14 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   it should "use default namespace when not specified" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster,
-      ClassArg, SparkPiClass,
-      ConfArg, s"$ImageConfKey=$SparkImage",
-      LocalJar
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "respect custom app name from spark-submit args" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val customAppName = "my-custom-app-name"
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster,
-      ClassArg, SparkPiClass,
-      NameArg, customAppName,
-      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-      ConfArg, s"$ImageConfKey=$SparkImage",
-      LocalJar
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, NameArg, "custom",
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "cleanup old template directories on construction" in {
@@ -398,9 +276,7 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   it should "cleanup templates even when submission fails during parsing" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
+    val submitter = createMockSubmitter()
 
     val request = SparkSubmitRequest(
       JavaArrays.asList(InvalidArgKey, InvalidArgValue),
@@ -420,7 +296,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     }
 
     val countAfter = if (baseDir.exists()) {
-      baseDir.listFiles().filter(_.isDirectory).length
+      baseDir.listFiles().count(_.isDirectory)
     } else {
       ZeroCount
     }
@@ -429,161 +305,51 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   it should "cleanup templates even when submission fails during K8s operations" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      SimpleTemplateJson,
-      null
-    )
-
+    val submitter = createMockSubmitter()
     val baseDir = new java.io.File(System.getProperty(TmpDirProperty), SparkSubmitterDir)
-    val countBefore = if (baseDir.exists()) {
-      baseDir.listFiles().count(_.isDirectory)
-    } else {
-      ZeroCount
-    }
+    val countBefore = if (baseDir.exists()) baseDir.listFiles().count(_.isDirectory) else ZeroCount
 
-    intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
+    intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(validArgs, SimpleTemplateJson)) }
 
-    val countAfter = if (baseDir.exists()) {
-      baseDir.listFiles().count(_.isDirectory)
-    } else {
-      ZeroCount
-    }
-
+    val countAfter = if (baseDir.exists()) baseDir.listFiles().count(_.isDirectory) else ZeroCount
     countAfter shouldBe countBefore
   }
 
   it should "handle large template content without issues" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val largeValue = LargeValuePrefix * LargeValueSize
-    val largeTemplate = s"""{"metadata":{"labels":{"$LargeKey":"$largeValue"}}}"""
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      largeTemplate,
-      null
-    )
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception should not be null
+    val submitter = createMockSubmitter()
+    val largeTemplate = s"""{"metadata":{"labels":{"k":"${"x" * 10000}"}}}"""
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(validArgs, largeTemplate)) }
+    ex should not be null
   }
 
   it should "handle unicode characters in templates" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val unicodeTemplate = s"""{"metadata":{"labels":{"$UnicodeLabel":"$UnicodeValue"}}}"""
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      unicodeTemplate,
-      null
-    )
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception should not be null
+    val submitter = createMockSubmitter()
+    val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(validArgs, """{"metadata":{"labels":{"e":"H"}}}""")) }
+    ex should not be null
   }
 
   it should "handle special characters in app name" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster,
-      ClassArg, SparkPiClass,
-      NameArg, SpecialAppName,
-      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-      ConfArg, s"$ImageConfKey=$SparkImage",
-      LocalJar
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, NameArg, SpecialAppName,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "handle multiple spark configurations" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val driverMemoryKey = "spark.driver.memory"
-    val executorMemoryKey = "spark.executor.memory"
-    val executorCoresKey = "spark.executor.cores"
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster,
-      ClassArg, SparkPiClass,
-      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-      ConfArg, s"$ImageConfKey=$SparkImage",
-      ConfArg, s"$driverMemoryKey=$DriverMemory",
-      ConfArg, s"$executorMemoryKey=$ExecutorMemory",
-      ConfArg, s"$executorCoresKey=$ExecutorCores",
-      LocalJar
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage",
+      ConfArg, "spark.driver.memory=2g", ConfArg, "spark.executor.memory=4g", LocalJar)))
   }
 
   it should "handle application arguments after jar" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
-
-    val request = SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster,
-      ClassArg, SparkPiClass,
-      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-      ConfArg, s"$ImageConfKey=$SparkImage",
-      LocalJar,
-      AppArg1,
-      AppArg2
-    ))
-
-    val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(request)
-    }
-    exception.isValidationError shouldBe false
+    submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar, AppArg1, AppArg2)))
   }
 
   it should "dry-run submit that parses args and cleans up templates on parse failure" in {
-    val mockClient = Mockito.mock(classOf[KubernetesClient])
-    val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
+    val submitter = createMockSubmitter()
 
     val request = SparkSubmitRequest(JavaArrays.asList(InvalidArgKey, InvalidArgValue))
 
@@ -699,7 +465,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     dryRunException.isValidationError shouldBe false
   }
 
-  private val validRequest = SparkSubmitRequest(JavaArrays.asList(
+  private def validRequest = SparkSubmitRequest(JavaArrays.asList(
     MasterArg, DefaultK8sMaster,
     ClassArg, SparkPiClass,
     ConfArg, s"$NamespaceConfKey=$DefaultNamespace",

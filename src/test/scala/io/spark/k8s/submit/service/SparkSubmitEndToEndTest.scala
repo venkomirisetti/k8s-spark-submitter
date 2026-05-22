@@ -1,6 +1,6 @@
 package io.spark.k8s.submit.service
 
-import io.spark.k8s.submit.model.SparkSubmitRequest
+import io.spark.k8s.submit.model.{SparkSubmitRequest, SparkSubmitResponse}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -63,367 +63,114 @@ class SparkSubmitEndToEndTest extends AnyFlatSpec
     new SparkSubmitter(provider)
   }
 
-  behavior of "Spark Job Submission End-to-End"
-
-  it should "submit Spark job WITHOUT pod templates" in {
+  private def submitAndVerify(appName: String, namespace: String = getTestNamespace,
+                              driverTemplate: String = null, executorTemplate: String = null,
+                              additionalConf: Map[String, String] = Map.empty): SparkSubmitResponse = {
     val submitter = createSubmitter()
     val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, NoTemplateApp,
-      getTestNamespace, SparkImage, LocalJar)
+    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, appName, namespace, SparkImage, LocalJar, additionalConf)
+    val request = SparkSubmitRequest(args, driverTemplate, executorTemplate)
 
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe NoTemplateApp
-    response.namespace shouldBe getTestNamespace
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
-    response.sparkAppId.length should be > 10
-    response.driverPodName should not be empty
-    response.driverPodName should startWith(NoTemplateApp + "-")
-    response.driverPodName should endWith("-driver")
-    response.driverPodName.length should be > (NoTemplateApp.length + 8)
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
-    pod.getMetadata.getNamespace shouldBe response.namespace
-  }
-
-  it should "submit Spark job WITH driver and executor pod templates" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, BothTemplatesApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val request = SparkSubmitRequest(args, DriverTemplateJson, ExecutorTemplateJson)
     val response = submitter.submitJob(request)
 
     response should not be null
-    response.appName shouldBe BothTemplatesApp
-    response.namespace shouldBe getTestNamespace
+    response.appName shouldBe appName
+    response.namespace shouldBe namespace
     response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
     response.driverPodName should not be empty
-    response.driverPodName should startWith(BothTemplatesApp)
-    response.driverPodName should endWith("-driver")
+    verifySparkResources(response.driverPodName, response.sparkAppId, namespace) shouldBe true
 
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
+    val pod = getKubeClient.pods().inNamespace(namespace).withName(response.driverPodName).get()
     pod should not be null
     pod.getMetadata.getName shouldBe response.driverPodName
-    pod.getMetadata.getNamespace shouldBe response.namespace
+    pod.getMetadata.getNamespace shouldBe namespace
 
+    response
+  }
+
+  private def getMasterUrl: String = getKubeClient.getConfiguration.getMasterUrl
+
+  behavior of "Spark Job Submission End-to-End"
+
+  it should "submit Spark job WITHOUT pod templates" in {
+    submitAndVerify(NoTemplateApp)
+  }
+
+  it should "submit Spark job WITH driver and executor pod templates" in {
+    val response = submitAndVerify(BothTemplatesApp, driverTemplate = DriverTemplateJson, executorTemplate = ExecutorTemplateJson)
+
+    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
     val podLabels = pod.getMetadata.getLabels
-    podLabels should not be null
     if (podLabels.containsKey(TemplateLabelKey)) {
       podLabels.get(TemplateLabelKey) shouldBe TemplateLabelValue
     }
   }
 
   it should "submit Spark job WITH driver template ONLY" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, DriverOnlyApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val request = SparkSubmitRequest(args, DriverOnlyTemplateJson, null)
-    val response = submitter.submitJob(request)
-
-    response should not be null
-    response.appName shouldBe DriverOnlyApp
-    response.namespace shouldBe getTestNamespace
-
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
-
-    response.driverPodName should not be empty
-    response.driverPodName should startWith(DriverOnlyApp)
-    response.driverPodName should endWith("-driver")
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
+    val response = submitAndVerify(DriverOnlyApp, driverTemplate = DriverOnlyTemplateJson)
 
     val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
-    pod.getMetadata.getNamespace shouldBe response.namespace
-
     val podLabels = pod.getMetadata.getLabels
-    podLabels should not be null
-
     if (podLabels.containsKey(DriverOnlyLabel)) {
       podLabels.containsKey(DriverOnlyLabel) shouldBe true
     }
   }
 
   it should "submit Spark job WITH executor template ONLY" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, ExecutorOnlyApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val request = SparkSubmitRequest(args, null, ExecutorOnlyTemplateJson)
-    val response = submitter.submitJob(request)
-
-    response should not be null
-    response.appName shouldBe ExecutorOnlyApp
-    response.namespace shouldBe getTestNamespace
-
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
-
-    response.driverPodName should not be empty
-    response.driverPodName should startWith(ExecutorOnlyApp)
-    response.driverPodName should endWith("-driver")
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
-    pod.getMetadata.getNamespace shouldBe response.namespace
+    submitAndVerify(ExecutorOnlyApp, executorTemplate = ExecutorOnlyTemplateJson)
   }
 
-  it should "handle CONCURRENT Spark application submissions with resource isolation" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-
-    val args1 = buildSparkSubmitArgs(masterUrl, SparkPiClass, ConcurrentApp1,
-      getTestNamespace, SparkImage, LocalJar)
-    val args2 = buildSparkSubmitArgs(masterUrl, SparkPiClass, ConcurrentApp2,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val response1 = submitter.submitJob(SparkSubmitRequest(args1))
-    val response2 = submitter.submitJob(SparkSubmitRequest(args2))
-
-    response1.appName shouldBe ConcurrentApp1
-    response1.namespace shouldBe getTestNamespace
-    response1.sparkAppId should startWith("spark-")
-    response1.driverPodName should startWith(ConcurrentApp1)
-    response1.driverPodName should endWith("-driver")
-
-    response2.appName shouldBe ConcurrentApp2
-    response2.namespace shouldBe getTestNamespace
-    response2.sparkAppId should startWith("spark-")
-    response2.driverPodName should startWith(ConcurrentApp2)
-    response2.driverPodName should endWith("-driver")
+  it should "handle CONCURRENT submissions with resource isolation" in {
+    val response1 = submitAndVerify(ConcurrentApp1)
+    val response2 = submitAndVerify(ConcurrentApp2)
 
     response1.sparkAppId should not equal response2.sparkAppId
     response1.driverPodName should not equal response2.driverPodName
 
-    verifySparkResources(
-      response1.driverPodName, response1.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    verifySparkResources(
-      response2.driverPodName, response2.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod1 = getKubeClient.pods().inNamespace(getTestNamespace).withName(response1.driverPodName).get()
-    val pod2 = getKubeClient.pods().inNamespace(getTestNamespace).withName(response2.driverPodName).get()
-
-    pod1 should not be null
-    pod2 should not be null
-    pod1.getMetadata.getName shouldBe response1.driverPodName
-    pod2.getMetadata.getName shouldBe response2.driverPodName
-    pod1.getMetadata.getName should not equal pod2.getMetadata.getName
-
-    val cm1 = findConfigMapByAppId(
-      response1.sparkAppId, getTestNamespace
-    )
-    val cm2 = findConfigMapByAppId(
-      response2.sparkAppId, getTestNamespace
-    )
-
+    val cm1 = findConfigMapByAppId(response1.sparkAppId, getTestNamespace)
+    val cm2 = findConfigMapByAppId(response2.sparkAppId, getTestNamespace)
     cm1 should not be None
     cm2 should not be None
     cm1.get.getMetadata.getName should not equal cm2.get.getMetadata.getName
   }
 
   it should "use CUSTOM NAMESPACE from spark-submit args" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val customNamespace = "custom-namespace"
-
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, NamespaceTestApp,
-      customNamespace, SparkImage, LocalJar)
-
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe NamespaceTestApp
-    response.namespace shouldBe customNamespace
-
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
-
-    response.driverPodName should not be empty
-    response.driverPodName should startWith(NamespaceTestApp)
-    response.driverPodName should endWith("-driver")
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, customNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(customNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
-    pod.getMetadata.getNamespace shouldBe customNamespace
+    submitAndVerify(NamespaceTestApp, namespace = "custom-namespace")
   }
 
   it should "clean up template directories on successful submission" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, CleanupTestApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val request = SparkSubmitRequest(args, SimpleTemplateJson, null)
-    val response = submitter.submitJob(request)
-
-    response should not be null
-    response.appName shouldBe CleanupTestApp
-    response.namespace shouldBe getTestNamespace
-
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
-
-    response.driverPodName should not be empty
-    response.driverPodName should startWith(CleanupTestApp)
-    response.driverPodName should endWith("-driver")
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
-
-    // This test verifies the submission completes successfully with template handling
+    submitAndVerify(CleanupTestApp, driverTemplate = SimpleTemplateJson)
   }
 
   it should "use CUSTOM DRIVER POD NAME when explicitly set in spark config" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val customDriverPodName = "my-custom-driver-pod"
+    val customPodName = "custom-driver"
+    val response = submitAndVerify(CustomPodNameApp, additionalConf = Map("spark.kubernetes.driver.pod.name" -> customPodName))
 
-    val additionalConf = Map(
-      "spark.kubernetes.driver.pod.name" -> customDriverPodName
-    )
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, CustomPodNameApp,
-      getTestNamespace, SparkImage, LocalJar, additionalConf)
+    response.driverPodName shouldBe customPodName
 
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe CustomPodNameApp
-    response.namespace shouldBe getTestNamespace
-
-    response.driverPodName shouldBe customDriverPodName
-
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(customDriverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe customDriverPodName
-    pod.getMetadata.getNamespace shouldBe getTestNamespace
-
-    val service = findServiceByDriverPodName(customDriverPodName, getTestNamespace)
+    val service = findServiceByDriverPodName(customPodName, getTestNamespace)
     service.foreach { svc =>
-      svc.getMetadata.getName shouldBe s"$customDriverPodName-svc"
+      svc.getMetadata.getName shouldBe s"$customPodName-svc"
     }
   }
 
   it should "use CUSTOM APP ID when explicitly set in spark config" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val customAppId = "my-custom-app-id-123"
-
-    val additionalConf = Map(
-      "spark.app.id" -> customAppId
-    )
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, CustomAppIdApp,
-      getTestNamespace, SparkImage, LocalJar, additionalConf)
-
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe CustomAppIdApp
-    response.namespace shouldBe getTestNamespace
+    val customAppId = "custom-id-123"
+    val response = submitAndVerify(CustomAppIdApp, additionalConf = Map("spark.app.id" -> customAppId))
 
     response.sparkAppId shouldBe customAppId
-
-    response.driverPodName should not be empty
-    response.driverPodName should startWith(CustomAppIdApp + "-")
-    response.driverPodName should endWith("-driver")
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
   }
 
   it should "AUTO-GENERATE both driver pod name and app ID when NOT set in config" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
+    val response = submitAndVerify(AutoGeneratedIdsApp)
 
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, AutoGeneratedIdsApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe AutoGeneratedIdsApp
-    response.namespace shouldBe getTestNamespace
-
-    response.sparkAppId should not be empty
-    response.sparkAppId should startWith("spark-")
     response.sparkAppId.length should be > 10
-
-    response.driverPodName should not be empty
     response.driverPodName should startWith(AutoGeneratedIdsApp + "-")
-    response.driverPodName should endWith("-driver")
     response.driverPodName.length should be > (AutoGeneratedIdsApp.length + 8)
-
-    verifySparkResources(
-      response.driverPodName, response.sparkAppId, getTestNamespace
-    ) shouldBe true
-
-    val pod = getKubeClient.pods().inNamespace(getTestNamespace).withName(response.driverPodName).get()
-    pod should not be null
-    pod.getMetadata.getName shouldBe response.driverPodName
-    pod.getMetadata.getNamespace shouldBe getTestNamespace
   }
 
   it should "verify resources created by our code (ConfigMap volume, SPARK_CONF_DIR, namespace key)" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, VerifyCodeApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe VerifyCodeApp
+    val response = submitAndVerify(VerifyCodeApp)
 
     verifyPodHasSparkConfDirEnv(response.driverPodName, getTestNamespace) shouldBe true
     verifyPodHasConfigMapVolumeMount(response.driverPodName, getTestNamespace) shouldBe true
@@ -432,34 +179,18 @@ class SparkSubmitEndToEndTest extends AnyFlatSpec
   }
 
   it should "set owner references for garbage collection (ConfigMap and Service reference driver Pod)" in {
-    val submitter = createSubmitter()
-    val masterUrl = getKubeClient.getConfiguration.getMasterUrl
-    val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, OwnerRefApp,
-      getTestNamespace, SparkImage, LocalJar)
-
-    val response = submitter.submitJob(SparkSubmitRequest(args))
-
-    response should not be null
-    response.appName shouldBe OwnerRefApp
+    val response = submitAndVerify(OwnerRefApp)
 
     val configMap = findConfigMapByAppId(response.sparkAppId, getTestNamespace)
     configMap should not be None
-
-    val configMapOwnerRefs = configMap.get.getMetadata.getOwnerReferences
-    configMapOwnerRefs should not be null
-    configMapOwnerRefs.isEmpty shouldBe false
-    configMapOwnerRefs.get(0).getKind shouldBe PodKind
-    configMapOwnerRefs.get(0).getName shouldBe response.driverPodName
-    configMapOwnerRefs.get(0).getController shouldBe true
+    configMap.get.getMetadata.getOwnerReferences.get(0).getKind shouldBe PodKind
+    configMap.get.getMetadata.getOwnerReferences.get(0).getName shouldBe response.driverPodName
+    configMap.get.getMetadata.getOwnerReferences.get(0).getController shouldBe true
 
     val service = findServiceByDriverPodName(response.driverPodName, getTestNamespace)
     service should not be None
-
-    val serviceOwnerRefs = service.get.getMetadata.getOwnerReferences
-    serviceOwnerRefs should not be null
-    serviceOwnerRefs.isEmpty shouldBe false
-    serviceOwnerRefs.get(0).getKind shouldBe PodKind
-    serviceOwnerRefs.get(0).getName shouldBe response.driverPodName
-    serviceOwnerRefs.get(0).getController shouldBe true
+    service.get.getMetadata.getOwnerReferences.get(0).getKind shouldBe PodKind
+    service.get.getMetadata.getOwnerReferences.get(0).getName shouldBe response.driverPodName
+    service.get.getMetadata.getOwnerReferences.get(0).getController shouldBe true
   }
 }
