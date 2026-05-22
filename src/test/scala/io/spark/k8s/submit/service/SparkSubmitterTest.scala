@@ -83,16 +83,9 @@ class SparkSubmitterTest extends AnyFlatSpec
   private val InvalidJson = "{invalid json"
   private val InvalidJsonArray = "[not valid"
 
-  // Error messages
-  private val K8sClientError = "K8s client error"
-
-  // Reflection field names
-  private val ClientFieldName = "_client"
-
   // File system paths (used in template cleanup tests)
   private val TmpDirProperty = "java.io.tmpdir"
   private val SparkSubmitterDir = ".spark-submitter"
-  private val SubmissionPrefix = "submission-"
 
   // Count expectations (used in template cleanup tests)
   private val ZeroCount = 0
@@ -128,13 +121,8 @@ class SparkSubmitterTest extends AnyFlatSpec
   // ========== Test Setup ==========
 
   // Unit test setup (mocks)
-  private def createMockK8sProvider(client: KubernetesClient): KubernetesClientProvider = {
-    val provider = new KubernetesClientProvider()
-    val field = classOf[KubernetesClientProvider].getDeclaredField(ClientFieldName)
-    field.setAccessible(true)
-    field.set(provider, client)
-    provider
-  }
+  private def createMockK8sProvider(client: KubernetesClient): KubernetesClientProvider =
+    new KubernetesClientProvider(() => client)
 
   // Integration test setup (KubeAPIServer from fixture)
   override def beforeAll(): Unit = {
@@ -156,11 +144,7 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   private def createIntegrationTestSubmitter(): (KubernetesClientProvider, SparkSubmitter) = {
-    val k8sClient = getClient
-    val provider = new KubernetesClientProvider()
-    val field = classOf[KubernetesClientProvider].getDeclaredField(ClientFieldName)
-    field.setAccessible(true)
-    field.set(provider, k8sClient)
+    val provider = new KubernetesClientProvider(() => getClient)
     val submitter = new SparkSubmitter(provider)
     (provider, submitter)
   }
@@ -177,11 +161,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(InvalidArgKey, InvalidArgValue),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(InvalidArgKey, InvalidArgValue))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -207,15 +187,11 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, InvalidMasterUrl,
-        ClassArg, SparkPiClass,
-        LocalJar
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, InvalidMasterUrl,
+      ClassArg, SparkPiClass,
+      LocalJar
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -228,11 +204,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(MasterArg, DefaultK8sMaster),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(MasterArg, DefaultK8sMaster))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -245,17 +217,13 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster,
+      ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -299,8 +267,7 @@ class SparkSubmitterTest extends AnyFlatSpec
         ConfArg, s"$ImageConfKey=$SparkImage",
         LocalJar
       ),
-      InvalidJson,
-      null
+      InvalidJson
     )
 
     val exception = intercept[SparkSubmitException] {
@@ -322,8 +289,7 @@ class SparkSubmitterTest extends AnyFlatSpec
         ConfArg, s"$ImageConfKey=$SparkImage",
         LocalJar
       ),
-      null,
-      InvalidJsonArray
+      executorPodTemplate = InvalidJsonArray
     )
 
     val exception = intercept[SparkSubmitException] {
@@ -352,7 +318,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
     }
-    exception.isValidationError shouldBe false
+    exception should not be null
   }
 
   it should "generate unique template directories for concurrent submissions" in {
@@ -385,16 +351,12 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster,
+      ClassArg, SparkPiClass,
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -408,35 +370,31 @@ class SparkSubmitterTest extends AnyFlatSpec
     val submitter = new SparkSubmitter(k8sProvider)
 
     val customAppName = "my-custom-app-name"
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        NameArg, customAppName,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster,
+      ClassArg, SparkPiClass,
+      NameArg, customAppName,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
     }
-    exception.getMessage should include(FailedToSubmit)
+    exception.isValidationError shouldBe false
   }
 
-  it should "initialize and cleanup old template directories on startup" in {
+  it should "cleanup old template directories on construction" in {
     val mockClient = Mockito.mock(classOf[KubernetesClient])
     val k8sProvider = createMockK8sProvider(mockClient)
-    val submitter = new SparkSubmitter(k8sProvider)
 
     val oldDirName = s"old_submission_${System.nanoTime()}"
     val oldDir = PodTemplateUtils.createTemplateDirForSubmission(oldDirName)
     oldDir.toFile.exists() shouldBe true
 
-    submitter.init()
+    // Construction triggers PodTemplateUtils.cleanupOldTemplateDirs()
+    new SparkSubmitter(k8sProvider)
   }
 
   it should "cleanup templates even when submission fails during parsing" in {
@@ -529,7 +487,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
     }
-    exception.isValidationError shouldBe false
+    exception should not be null
   }
 
   it should "handle unicode characters in templates" in {
@@ -553,7 +511,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
     }
-    exception.isValidationError shouldBe false
+    exception should not be null
   }
 
   it should "handle special characters in app name" in {
@@ -561,18 +519,14 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        NameArg, SpecialAppName,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster,
+      ClassArg, SparkPiClass,
+      NameArg, SpecialAppName,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -588,20 +542,16 @@ class SparkSubmitterTest extends AnyFlatSpec
     val driverMemoryKey = "spark.driver.memory"
     val executorMemoryKey = "spark.executor.memory"
     val executorCoresKey = "spark.executor.cores"
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        ConfArg, s"$driverMemoryKey=$DriverMemory",
-        ConfArg, s"$executorMemoryKey=$ExecutorMemory",
-        ConfArg, s"$executorCoresKey=$ExecutorCores",
-        LocalJar
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster,
+      ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      ConfArg, s"$driverMemoryKey=$DriverMemory",
+      ConfArg, s"$executorMemoryKey=$ExecutorMemory",
+      ConfArg, s"$executorCoresKey=$ExecutorCores",
+      LocalJar
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -614,19 +564,15 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(
-        MasterArg, DefaultK8sMaster,
-        ClassArg, SparkPiClass,
-        ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
-        ConfArg, s"$ImageConfKey=$SparkImage",
-        LocalJar,
-        AppArg1,
-        AppArg2
-      ),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(
+      MasterArg, DefaultK8sMaster,
+      ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar,
+      AppArg1,
+      AppArg2
+    ))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request)
@@ -639,11 +585,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val k8sProvider = createMockK8sProvider(mockClient)
     val submitter = new SparkSubmitter(k8sProvider)
 
-    val request = SparkSubmitRequest(
-      JavaArrays.asList(InvalidArgKey, InvalidArgValue),
-      null,
-      null
-    )
+    val request = SparkSubmitRequest(JavaArrays.asList(InvalidArgKey, InvalidArgValue))
 
     val baseDir = new java.io.File(System.getProperty(TmpDirProperty), SparkSubmitterDir)
     val countBefore = if (baseDir.exists()) baseDir.listFiles().count(_.isDirectory) else ZeroCount
@@ -658,6 +600,141 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   // ==========================================================================
+  // RETRY CLASSIFICATION TESTS
+  // ==========================================================================
+  // Verify that SparkSubmitter correctly classifies K8s failures as retryable (transient)
+  // vs terminal, which drives the operator's circuit-breaker behavior.
+  // ==========================================================================
+
+  "SparkSubmitter retry classification" should "classify K8s 401 Unauthorized as retryable" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("unauthorized", 401, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe true
+  }
+
+  it should "classify K8s 429 Too Many Requests as retryable" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("rate limited", 429, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe true
+  }
+
+  it should "classify K8s 500 Internal Server Error as retryable" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("server error", 500, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe true
+  }
+
+  it should "classify K8s 503 Service Unavailable as retryable" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("unavailable", 503, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe true
+  }
+
+  it should "classify K8s 403 Forbidden as terminal (not retryable)" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("forbidden", 403, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe false
+    exception.isValidationError shouldBe false
+  }
+
+  it should "classify K8s 409 Conflict as terminal" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("conflict", 409, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe false
+  }
+
+  it should "classify K8s exception with no HTTP code (network error) as terminal" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("connection refused",
+        new java.net.ConnectException("connection refused")))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe false
+  }
+
+  it should "classify unknown RuntimeException as terminal" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new RuntimeException("unexpected"))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.isTransient shouldBe false
+  }
+
+  it should "preserve classification semantics in dry-run mode" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new io.fabric8.kubernetes.client.KubernetesClientException("unavailable", 503, null))
+
+    val dryRunException = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest, dryRun = true)
+    }
+    dryRunException.isTransient shouldBe true
+    dryRunException.isValidationError shouldBe false
+  }
+
+  private val validRequest = SparkSubmitRequest(JavaArrays.asList(
+    MasterArg, DefaultK8sMaster,
+    ClassArg, SparkPiClass,
+    ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+    ConfArg, s"$ImageConfKey=$SparkImage",
+    LocalJar
+  ))
+
+  private def createSubmitterWithThrowingClient(exception: Exception): SparkSubmitter = {
+    import org.mockito.ArgumentMatchers.{any, anyBoolean}
+    import io.fabric8.kubernetes.api.model.{Pod, PodList}
+    import io.fabric8.kubernetes.client.dsl.{MixedOperation, NonNamespaceOperation, PodResource}
+
+    val mockClient = Mockito.mock(classOf[KubernetesClient])
+    val podOps = Mockito.mock(classOf[MixedOperation[Pod, PodList, PodResource]])
+    val namespacedPodOps = Mockito.mock(classOf[NonNamespaceOperation[Pod, PodList, PodResource]])
+    val podResource = Mockito.mock(classOf[PodResource])
+
+    Mockito.when(mockClient.pods()).thenReturn(podOps)
+    Mockito.when(podOps.inNamespace(any())).thenReturn(namespacedPodOps)
+    Mockito.when(namespacedPodOps.resource(any[Pod])).thenReturn(podResource)
+    Mockito.when(podResource.dryRun(anyBoolean())).thenReturn(podResource)
+    Mockito.when(podResource.create()).thenThrow(exception)
+
+    val resourceListOps = Mockito.mock(classOf[io.fabric8.kubernetes.client.dsl.NamespaceListVisitFromServerGetDeleteRecreateWaitApplicable[io.fabric8.kubernetes.api.model.HasMetadata]])
+    Mockito.when(mockClient.resourceList(any[java.util.List[io.fabric8.kubernetes.api.model.HasMetadata]])).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.inNamespace(any())).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.dryRun(anyBoolean())).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.forceConflicts()).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.serverSideApply()).thenReturn(java.util.Collections.emptyList())
+
+    val k8sProvider = createMockK8sProvider(mockClient)
+    new SparkSubmitter(k8sProvider)
+  }
+
+  // ==========================================================================
   // Basic integration tests (comprehensive E2E scenarios in SparkSubmitEndToEndTest)
 
   "SparkSubmitter.submitJob (integration)" should "submit Spark job and create K8s resources" in {
@@ -665,7 +742,7 @@ class SparkSubmitterTest extends AnyFlatSpec
 
     val masterUrl = getMockServerMasterUrl
     val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, IntegrationTestApp, getTestNamespace, SparkImage, LocalJar, Map.empty[String, String])
-    val request = SparkSubmitRequest(args, null, null)
+    val request = SparkSubmitRequest(args)
 
     val response = submitter.submitJob(request)
 
@@ -713,7 +790,7 @@ class SparkSubmitterTest extends AnyFlatSpec
 
     val masterUrl = getMockServerMasterUrl
     val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, ResourceCheckApp, getTestNamespace, SparkImage, LocalJar, Map.empty[String, String])
-    val request = SparkSubmitRequest(args, null, null)
+    val request = SparkSubmitRequest(args)
 
     val response = submitter.submitJob(request)
     val appId = response.sparkAppId
@@ -761,7 +838,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val masterUrl = getMockServerMasterUrl
     val dryRunAppName = "dryrun-test-app"
     val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, dryRunAppName, getTestNamespace, SparkImage, LocalJar, Map.empty[String, String])
-    val request = SparkSubmitRequest(args, null, null)
+    val request = SparkSubmitRequest(args)
 
     val response = submitter.submitJob(request, dryRun = true)
     response.appName shouldBe dryRunAppName

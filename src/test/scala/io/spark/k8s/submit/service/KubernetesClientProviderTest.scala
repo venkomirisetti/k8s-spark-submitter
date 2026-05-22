@@ -2,56 +2,53 @@ package io.spark.k8s.submit.service
 
 import io.fabric8.kubernetes.client.KubernetesClient
 import org.mockito.Mockito
+import org.mockito.Mockito.{times, verify}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/**
- * Unit tests for KubernetesClientProvider using Mockito.
- * Integration tests are in SparkSubmitterTest.
- */
 class KubernetesClientProviderTest extends AnyFlatSpec with Matchers {
 
-  "KubernetesClientProvider" should "manage kubernetes client lifecycle" in {
-    val provider = new KubernetesClientProvider()
+  "KubernetesClientProvider" should "return the client from the factory" in {
     val mockClient = Mockito.mock(classOf[KubernetesClient])
+    val provider = new KubernetesClientProvider(() => mockClient)
 
-    val clientField = classOf[KubernetesClientProvider].getDeclaredField("_client")
-    clientField.setAccessible(true)
-    clientField.set(provider, mockClient)
-
-    provider.client should not be null
     provider.client shouldBe mockClient
-
-    provider.cleanup()
-    Mockito.verify(mockClient, Mockito.times(1)).close()
   }
 
-  it should "handle cleanup when client is null" in {
-    val provider = new KubernetesClientProvider()
-    noException should be thrownBy provider.cleanup()
+  it should "close the underlying client" in {
+    val mockClient = Mockito.mock(classOf[KubernetesClient])
+    val provider = new KubernetesClientProvider(() => mockClient)
+
+    provider.close()
+
+    verify(mockClient, times(1)).close()
   }
 
-  it should "throw exception when accessing client before initialization" in {
-    val provider = new KubernetesClientProvider()
+  it should "throw IllegalStateException after close" in {
+    val mockClient = Mockito.mock(classOf[KubernetesClient])
+    val provider = new KubernetesClientProvider(() => mockClient)
+
+    provider.close()
 
     intercept[IllegalStateException] {
       provider.client
     }
   }
 
-  it should "handle cleanup failure gracefully" in {
-    val provider = new KubernetesClientProvider()
+  it should "handle double close gracefully" in {
     val mockClient = Mockito.mock(classOf[KubernetesClient])
+    val provider = new KubernetesClientProvider(() => mockClient)
 
-    // Make close() throw exception
-    Mockito.when(mockClient.close()).thenThrow(new RuntimeException("Close failed"))
+    provider.close()
+    noException should be thrownBy provider.close()
+    verify(mockClient, times(1)).close()
+  }
 
-    val clientField = classOf[KubernetesClientProvider].getDeclaredField("_client")
-    clientField.setAccessible(true)
-    clientField.set(provider, mockClient)
+  it should "handle close failure gracefully" in {
+    val mockClient = Mockito.mock(classOf[KubernetesClient])
+    Mockito.doThrow(new RuntimeException("Close failed")).when(mockClient).close()
+    val provider = new KubernetesClientProvider(() => mockClient)
 
-    // Should not throw - error is logged
-    noException should be thrownBy provider.cleanup()
-    Mockito.verify(mockClient, Mockito.times(1)).close()
+    noException should be thrownBy provider.close()
   }
 }

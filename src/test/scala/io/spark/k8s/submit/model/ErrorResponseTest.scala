@@ -5,52 +5,40 @@ import org.scalatest.matchers.should.Matchers
 
 import java.time.Instant
 
-/**
- * Unit tests for ErrorResponse model.
- * Tests focus on factory methods, timestamp formatting, and Jackson serialization rather than case class auto-generated methods.
- */
 class ErrorResponseTest extends AnyFlatSpec with Matchers {
 
-  "ErrorResponse.badRequest" should "create error with correct status, ISO-8601 timestamp, and handle null details" in {
-    val message = "Invalid configuration"
-    val details = "Missing required field"
-
+  "ErrorResponse.badRequest" should "create error with ISO-8601 timestamp" in {
     val before = Instant.now
-    val response = ErrorResponse.badRequest(message, details)
+    val response = ErrorResponse.badRequest("msg", "detail")
     val after = Instant.now
 
-    response.message shouldBe message
-    response.details shouldBe details
+    response.message shouldBe "msg"
+    response.details shouldBe "detail"
 
-    // Verify timestamp is ISO-8601 format and recent
     val timestamp = Instant.parse(response.timestamp)
     timestamp should (be >= before and be <= after)
-
-    // Verify null details handling
-    ErrorResponse.badRequest("msg", null).details shouldBe null
   }
 
-  "ErrorResponse.internalError" should "create error with correct status and null details" in {
-    val message = "Unexpected error occurred"
+  it should "handle null details" in {
+    val response = ErrorResponse.badRequest("msg", null)
+    response.details shouldBe null
+  }
 
-    val response = ErrorResponse.internalError(message)
+  "ErrorResponse.internalError" should "create error with null details" in {
+    val response = ErrorResponse.internalError("msg")
 
-    response.message shouldBe message
+    response.message shouldBe "msg"
     response.details shouldBe null
     noException should be thrownBy Instant.parse(response.timestamp)
   }
 
-  "ErrorResponse.of" should "create custom error with any status/error code" in {
-    val status = 422
-    val error = "VALIDATION_ERROR"
-    val message = "Validation failed"
-    val details = "Invalid format"
-    val response = ErrorResponse.of(status, error, message, details)
+  "ErrorResponse.of" should "create error with custom status and error code" in {
+    val response = ErrorResponse.of(422, "ERR", "msg", "detail")
 
-    response.status shouldBe status
-    response.error shouldBe error
-    response.message shouldBe message
-    response.details shouldBe details
+    response.status shouldBe 422
+    response.error shouldBe "ERR"
+    response.message shouldBe "msg"
+    response.details shouldBe "detail"
     noException should be thrownBy Instant.parse(response.timestamp)
   }
 }

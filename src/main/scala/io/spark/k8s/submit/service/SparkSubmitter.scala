@@ -37,7 +37,7 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
   // Initialize on construction
   PodTemplateUtils.cleanupOldTemplateDirs()
 
-  def submitJob(request: SparkSubmitRequest, dryRun: Boolean): SparkSubmitResponse = {
+  def submitJob(request: SparkSubmitRequest, dryRun: Boolean = false): SparkSubmitResponse = {
     val args = parseArgs(request.sparkSubmitArgs, dryRun)
     val conf = args.sparkConf
 
@@ -57,7 +57,7 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
 
   /** Submit with raw spark-submit args (like SparkSubmit.Main). */
   def submitJob(args: Array[String]): SparkSubmitResponse = {
-    submitJob(SparkSubmitRequest(JavaArrays.asList(args: _*), null, null), dryRun = false)
+    submitJob(SparkSubmitRequest(JavaArrays.asList(args: _*), null, null))
   }
 
   /** Parses spark-submit arguments, wrapping parser failures with submission error context. */
