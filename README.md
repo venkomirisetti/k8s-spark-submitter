@@ -11,7 +11,7 @@ A **fire-and-forget** REST API that submits Spark jobs to Kubernetes and returns
 - **Spark-Compatible Parsing**: Uses Spark's internal `SparkSubmitArguments` and `SparkSubmit.prepareSubmitEnvironment` for argument parsing
 - **Custom Resource Creation**: Controls K8s resource creation (fixes Spark's ConfigMap singleton issue for multi-job JVM)
 - **Fire-and-Forget**: Returns immediately after pod creation without job tracking
-- **Cluster Mode Only**: Drivers always run as separate pods on the cluster
+- **Cluster Mode Only**: Only `--deploy-mode cluster` is supported; client mode submissions are rejected at parse time with a validation error
 - **Stateless**: No job history or state management
 - **Automatic Cleanup**: All resources are garbage collected when driver pod is deleted
 
@@ -60,6 +60,7 @@ The service uses Spark's internal (package-private) classes:
 |-------|---------|---------|
 | `SparkSubmitArguments` | `org.apache.spark.deploy` | Parse CLI args |
 | `SparkSubmit.prepareSubmitEnvironment` | `org.apache.spark.deploy` | Build SparkConf |
+| `ClientArguments` | `org.apache.spark.deploy.k8s.submit` | Resolve mainClass and MainAppResource (Java/Python/R) |
 | `KubernetesDriverBuilder` | `org.apache.spark.deploy.k8s.submit` | Build driver pod spec |
 | `KubernetesClientUtils` | `org.apache.spark.deploy.k8s.submit` | Build ConfigMaps |
 
@@ -71,8 +72,10 @@ The service uses Spark's internal (package-private) classes:
 1. POST /spark-submit
 
 2. Parse Arguments (K8sSparkSubmitArgsParser)
-   ├─▶ SparkSubmitArguments parses CLI args
-   └─▶ SparkSubmit.prepareSubmitEnvironment builds SparkConf
+   ├─▶ Validate deploy mode is "cluster" (rejects client mode)
+   ├─▶ SparkSubmitArguments parses CLI args (supports --properties-file)
+   ├─▶ SparkSubmit.prepareSubmitEnvironment builds SparkConf
+   └─▶ ClientArguments resolves mainClass and MainAppResource (Java/Python/R)
 
 3. Prepare Submission (SparkSubmitter)
    ├─▶ Extract appName, namespace from SparkConf
