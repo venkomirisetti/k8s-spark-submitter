@@ -160,6 +160,7 @@ trait KubeAPIServerFixture extends BeforeAndAfterAll {
     /** Spark submit argument names */
   private object SparkArgs {
     val Master = "--master"
+    val DeployMode = "--deploy-mode"
     val Class = "--class"
     val Name = "--name"
     val Conf = "--conf"
@@ -222,6 +223,7 @@ trait KubeAPIServerFixture extends BeforeAndAfterAll {
     // Build base arguments
     val baseArgs = Seq(
       SparkArgs.Master, s"${SparkDefaults.K8sScheme}$masterUrl",
+      SparkArgs.DeployMode, "cluster",
       SparkArgs.Class, mainClass,
       SparkArgs.Name, appName,
       SparkArgs.Conf, s"${SparkConf.Namespace}=$namespace",

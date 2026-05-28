@@ -57,10 +57,10 @@ object K8sSparkClient {
     // Step 1: Build KubernetesDriverConf from SparkConf
     val driverConf = new KubernetesDriverConf(
       conf, appId,
-      JavaMainAppResource(Option(args.primaryResource).filter(_.nonEmpty)),
+      args.mainAppResource,
       Option(args.mainClass).getOrElse(""),
-      Option(args.appArgs).map(_.toArray(Array.empty[String])).getOrElse(Array.empty),
-      None
+      args.appArgs,
+      args.proxyUser
     )
 
     // Step 2: Build driver spec using Spark's feature steps (pod, service, secrets, volumes, etc.)

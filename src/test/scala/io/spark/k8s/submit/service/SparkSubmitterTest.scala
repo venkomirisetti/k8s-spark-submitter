@@ -43,6 +43,7 @@ class SparkSubmitterTest extends AnyFlatSpec
 
   // Spark CLI Arguments
   private val MasterArg = "--master"
+  private val DeployModeArg = "--deploy-mode"
   private val ClassArg = "--class"
   private val NameArg = "--name"
   private val ConfArg = "--conf"
@@ -144,7 +145,7 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   private def validArgs: java.util.List[String] = JavaArrays.asList(
-    MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+    MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass,
     ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)
 
   // Integration test setup (KubeAPIServer from fixture)
@@ -195,18 +196,47 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   it should "require main class or primary resource" in {
-    submitExpectingValidationError(SparkSubmitRequest(JavaArrays.asList(MasterArg, DefaultK8sMaster)))
+    submitExpectingValidationError(SparkSubmitRequest(JavaArrays.asList(MasterArg, DefaultK8sMaster, DeployModeArg, "cluster")))
+  }
+
+  it should "reject client deploy mode" in {
+    val request = SparkSubmitRequest(
+      JavaArrays.asList(
+        MasterArg, DefaultK8sMaster, DeployModeArg, "client",
+        ClassArg, SparkPiClass,
+        ConfArg, s"$ImageConfKey=$SparkImage",
+        LocalJar
+      ))
+
+    val exception = intercept[SparkSubmitException] { createMockSubmitter().submitJob(request) }
+    exception.isValidationError shouldBe true
+    exception.getDetails should include("cluster")
+  }
+
+  it should "reject client deploy mode passed via --conf" in {
+    val request = SparkSubmitRequest(
+      JavaArrays.asList(
+        ConfArg, s"spark.master=$DefaultK8sMaster",
+        ConfArg, "spark.submit.deployMode=client",
+        ClassArg, SparkPiClass,
+        ConfArg, s"$ImageConfKey=$SparkImage",
+        LocalJar
+      ))
+
+    val exception = intercept[SparkSubmitException] { createMockSubmitter().submitJob(request) }
+    exception.isValidationError shouldBe true
+    exception.getDetails should include("cluster")
   }
 
   it should "handle null driver template and null executor template" in {
     submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass,
       ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "handle empty driver template and empty executor template" in {
     submitExpectingSubmissionError(SparkSubmitRequest(
-      JavaArrays.asList(MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      JavaArrays.asList(MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass,
         ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar),
       EmptyString, EmptyString))
   }
@@ -233,13 +263,13 @@ class SparkSubmitterTest extends AnyFlatSpec
     val submitter = createMockSubmitter()
 
     val request1 = SparkSubmitRequest(
-      JavaArrays.asList(MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, ConfArg, s"$NamespaceConfKey=$TestNamespace1",
+      JavaArrays.asList(MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass, ConfArg, s"$NamespaceConfKey=$TestNamespace1",
         ConfArg, s"$ImageConfKey=$SparkImage", LocalJar),
       SimpleTemplateJson, null
     )
 
     val request2 = SparkSubmitRequest(
-      JavaArrays.asList(MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, ConfArg, s"$NamespaceConfKey=$TestNamespace2",
+      JavaArrays.asList(MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass, ConfArg, s"$NamespaceConfKey=$TestNamespace2",
         ConfArg, s"$ImageConfKey=$SparkImage", LocalJar),
       SimpleTemplateJson, null
     )
@@ -254,12 +284,12 @@ class SparkSubmitterTest extends AnyFlatSpec
 
   it should "use default namespace when not specified" in {
     submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass, ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "respect custom app name from spark-submit args" in {
     submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, NameArg, "custom",
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass, NameArg, "custom",
       ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
@@ -330,20 +360,20 @@ class SparkSubmitterTest extends AnyFlatSpec
 
   it should "handle special characters in app name" in {
     submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass, NameArg, SpecialAppName,
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass, NameArg, SpecialAppName,
       ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage", LocalJar)))
   }
 
   it should "handle multiple spark configurations" in {
     submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass,
       ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage",
       ConfArg, "spark.driver.memory=2g", ConfArg, "spark.executor.memory=4g", LocalJar)))
   }
 
   it should "handle application arguments after jar" in {
     submitExpectingSubmissionError(SparkSubmitRequest(JavaArrays.asList(
-      MasterArg, DefaultK8sMaster, ClassArg, SparkPiClass,
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster", ClassArg, SparkPiClass,
       ConfArg, s"$NamespaceConfKey=$DefaultNamespace", ConfArg, s"$ImageConfKey=$SparkImage",
       LocalJar, AppArg1, AppArg2)))
   }
@@ -466,7 +496,7 @@ class SparkSubmitterTest extends AnyFlatSpec
   }
 
   private def validRequest = SparkSubmitRequest(JavaArrays.asList(
-    MasterArg, DefaultK8sMaster,
+    MasterArg, DefaultK8sMaster, DeployModeArg, "cluster",
     ClassArg, SparkPiClass,
     ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
     ConfArg, s"$ImageConfKey=$SparkImage",
@@ -580,6 +610,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     val masterUrl = getMockServerMasterUrl
     val args = Array(
       MasterArg, s"$K8sScheme$masterUrl",
+      DeployModeArg, "cluster",
       ClassArg, SparkPiClass,
       NameArg, ArrayArgsTestApp,
       ConfArg, s"$NamespaceConfKey=${getTestNamespace}",
