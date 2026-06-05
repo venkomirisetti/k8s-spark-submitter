@@ -1,5 +1,8 @@
 # Kubernetes Spark Submitter Service
 
+[![Build](https://github.com/venkomirisetti/k8s-spark-submitter/actions/workflows/pr-validate.yml/badge.svg)](https://github.com/venkomirisetti/k8s-spark-submitter/actions/workflows/pr-validate.yml)
+[![Release](https://github.com/venkomirisetti/k8s-spark-submitter/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/venkomirisetti/k8s-spark-submitter/actions/workflows/build-and-push.yml)
+
 A **fire-and-forget** REST API that submits Spark jobs to Kubernetes and returns immediately after creating the driver pod. The service is entirely stateless — it does not track, monitor, or manage job lifecycle. Clients that need to observe job progress should poll the **Kubernetes API** using the `driver_pod_name` returned in the submission response.
 
 ## Overview
