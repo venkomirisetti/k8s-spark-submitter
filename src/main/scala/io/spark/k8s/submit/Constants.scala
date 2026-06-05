@@ -17,6 +17,10 @@ object SparkConstants {
   final val DriverPodTemplate = "driver-pod-template.json"
   final val ExecutorPodTemplate = "executor-pod-template.json"
   final val TempDirectory = ".spark-submitter"
+
+  // Default pod template container names (must match spark-operator constants)
+  final val DriverContainerName = "spark-kubernetes-driver"
+  final val ExecutorContainerName = "spark-kubernetes-executor"
 }
 
 /** Log prefixes for structured logging and Splunk searching. */

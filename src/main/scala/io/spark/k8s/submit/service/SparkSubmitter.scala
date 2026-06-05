@@ -69,6 +69,10 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
     val templateDir = PodTemplateUtils.createTemplateDirForSubmission(s"submission_${System.nanoTime()}_${UUID.randomUUID()}")
     configurePodTemplate(request.driverTemplate, K8sDriverTemplateKey, SparkConstants.DriverPodTemplate, templateDir, conf)
     configurePodTemplate(request.executorTemplate, K8sExecutorTemplateKey, SparkConstants.ExecutorPodTemplate, templateDir, conf)
+
+    conf.setIfMissing(K8sSparkClient.K8sDriverTemplateContainerNameKey, SparkConstants.DriverContainerName)
+    conf.setIfMissing(K8sSparkClient.K8sExecutorTemplateContainerNameKey, SparkConstants.ExecutorContainerName)
+
     Some(templateDir)
   }
 

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 
 APP_NAME    := k8s-spark-submitter
-VERSION     := $(shell mvn help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null || echo "1.0.0")
+VERSION     := $(shell ./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null || echo "1.0.0")
 SPARK_IMAGE ?= docker.io/library/spark:4.0.1
 IMAGE_TAG   ?= $(APP_NAME):$(VERSION)
 
@@ -12,16 +12,16 @@ IMAGE_TAG   ?= $(APP_NAME):$(VERSION)
 .PHONY: build test package clean image run
 
 build:
-	mvn clean compile
+	./mvnw clean compile
 
 test:
-	mvn test
+	./mvnw test
 
 package:
-	mvn clean package -DskipTests -Dmaven.test.skip=true
+	./mvnw clean package -DskipTests -Dmaven.test.skip=true
 
 clean:
-	mvn clean
+	./mvnw clean
 
 # ------------------------------------------------------------------------------
 # Docker

@@ -53,27 +53,26 @@ object SparkSubmitServer {
     val reload = if (ServerConfig.Tls.certReloadEnabled) "enabled" else "disabled"
 
     val tlsDetails = if (ServerConfig.Tls.enabled)
-      s"""  | certPath .......... ${ServerConfig.Tls.certPath}
-         |  | keyPath ........... ${ServerConfig.Tls.keyPath}
-         |  | caCertPath ........ ${ServerConfig.Tls.caCertPath.getOrElse("(not set)")}
-         |  | certReload ........ $reload
-         |  | checkInterval ..... ${ServerConfig.Tls.certCheckIntervalMs}ms
-         |  | hashVerify ........ ${ServerConfig.Tls.certVerifyWithHash}""".stripMargin
+      s"""#  | certPath .......... ${ServerConfig.Tls.certPath}
+          #  | keyPath ........... ${ServerConfig.Tls.keyPath}
+          #  | caCertPath ........ ${ServerConfig.Tls.caCertPath.getOrElse("(not set)")}
+          #  | certReload ........ $reload
+          #  | checkInterval ..... ${ServerConfig.Tls.certCheckIntervalMs}ms
+          #  | hashVerify ........ ${ServerConfig.Tls.certVerifyWithHash}""".stripMargin('#')
     else
       "  | (no TLS configuration)"
 
-    log.info(
-      s"""
-         |  ============================================================
-         |  ::  Spark Submitter on Kubernetes  ::  Started
-         |  ============================================================
-         |  | apiPort ........... ${ServerConfig.Server.port} ($scheme)
-         |  | probePort ......... ${ServerConfig.Server.probePort} (http)
-         |  | $security
-         |  ------------------------------------------------------------
-         |$tlsDetails
-         |  ============================================================
-         |""".stripMargin)
+    log.info(s"""
+          #  ============================================================
+          #  ::  Spark Submitter on Kubernetes  ::  Started
+          #  ============================================================
+          #  | apiPort ........... ${ServerConfig.Server.port} ($scheme)
+          #  | probePort ......... ${ServerConfig.Server.probePort} (http)
+          #  | $security
+          #  ------------------------------------------------------------
+          #$tlsDetails
+          #  ============================================================
+          #""".stripMargin('#'))
   }
 
   private def registerShutdownHook(server: Server): Unit =

@@ -41,6 +41,8 @@ object K8sSparkClient {
   val K8sNamespaceDefault: String = Config.KUBERNETES_NAMESPACE.defaultValueString
   val K8sDriverTemplateKey: String = Config.KUBERNETES_DRIVER_PODTEMPLATE_FILE.key
   val K8sExecutorTemplateKey: String = Config.KUBERNETES_EXECUTOR_PODTEMPLATE_FILE.key
+  val K8sDriverTemplateContainerNameKey: String = Config.KUBERNETES_DRIVER_PODTEMPLATE_CONTAINER_NAME.key
+  val K8sExecutorTemplateContainerNameKey: String = Config.KUBERNETES_EXECUTOR_PODTEMPLATE_CONTAINER_NAME.key
 
   /**
    * Submits driver pod. Generates app ID if not set, then builds and creates driver pod.
