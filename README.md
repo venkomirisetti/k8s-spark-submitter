@@ -14,6 +14,8 @@ A **fire-and-forget** REST API that submits Spark jobs to Kubernetes and returns
 - **Cluster Mode Only**: Only `--deploy-mode cluster` is supported; client mode submissions are rejected at parse time with a validation error
 - **Stateless**: No job history or state management
 - **Automatic Cleanup**: All resources are garbage collected when driver pod is deleted
+- **TLS Support**: Optional HTTPS with mTLS and automatic cert reload
+- **Dual-Port Architecture**: Separate API and probe ports for clean isolation
 
 ## Architecture
 
@@ -69,7 +71,7 @@ The service uses Spark's internal (package-private) classes:
 ## Submission Flow
 
 ```
-1. POST /spark-submit
+1. POST /api/v1/spark-submit
 
 2. Parse Arguments (K8sSparkSubmitArgsParser)
    ├─▶ Validate deploy mode is "cluster" (rejects client mode)
@@ -108,18 +110,18 @@ When the driver pod is deleted, Kubernetes garbage collection automatically remo
 
 ## API
 
-All endpoints served on a single port (default `8080`).
+Dual-port architecture — API and probes are served on separate ports:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/spark-submit` | Submit a Spark job |
-| POST | `/spark-submit?dryRun=true` | Validate without creating K8s resources |
-| GET | `/health` | Liveness/readiness probe |
-| GET | `/metrics` | Prometheus metrics (text format) |
+| Port | Method | Endpoint | Description |
+|------|--------|----------|-------------|
+| 8080 (API) | POST | `/api/v1/spark-submit` | Submit a Spark job |
+| 8080 (API) | POST | `/api/v1/spark-submit?dryRun=true` | Validate without creating K8s resources |
+| 8081 (Probes) | GET | `/api/v1/health` | Liveness/readiness probe |
+| 8081 (Probes) | GET | `/api/v1/metrics` | Prometheus metrics (text format) |
 
 ## Metrics
 
-**Endpoint:** `GET /metrics` (Prometheus text format)
+**Endpoint:** `GET /api/v1/metrics` on probe port (8081)
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -165,7 +167,7 @@ Pod templates are nested JSON objects (no escaping needed):
   "driver_pod_template": {
     "spec": {
       "containers": [{
-        "name": "spark",
+        "name": "spark-kubernetes-driver",
         "resources": { "requests": { "memory": "2Gi" } }
       }]
     }
@@ -173,7 +175,7 @@ Pod templates are nested JSON objects (no escaping needed):
   "executor_pod_template": {
     "spec": {
       "containers": [{
-        "name": "spark",
+        "name": "spark-kubernetes-executor",
         "resources": { "requests": { "memory": "4Gi" } }
       }]
     }
@@ -214,23 +216,112 @@ Same response format. No K8s resources are created — validates RBAC, schema, q
 
 All configuration via environment variables:
 
+### Server
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `8080` | Server port |
+| `PORT` | `8080` | API port (HTTP or HTTPS) |
+| `PROBE_PORT` | `8081` | Probe/metrics port (always HTTP) |
 | `SERVER_ADDRESS` | `0.0.0.0` | Bind address |
 | `SERVER_MAX_THREADS` | `200` | Max Jetty threads |
 | `SHUTDOWN_TIMEOUT_MS` | `30000` | Graceful shutdown timeout |
+
+### TLS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TLS_ENABLED` | `false` | Enable HTTPS on API port |
+| `TLS_CERT_PATH` | (required when TLS enabled) | Path to PEM certificate chain file |
+| `TLS_KEY_PATH` | (required when TLS enabled) | Path to PEM private key file (PKCS#8) |
+| `TLS_CA_CERT_PATH` | (unset) | Path to CA cert for mTLS — when set, clients must present a cert signed by this CA |
+| `TLS_CERT_RELOAD_ENABLED` | `false` | Enable auto-reload of certs on file change |
+| `TLS_CERT_CHECK_INTERVAL_MS` | `3600000` | Debounce interval for cert file checks (default 60 min) |
+| `TLS_CERT_VERIFY_WITH_HASH` | `false` | Also detect file changes via SHA-256 hash (for K8s symlink swap edge cases) |
+
+### Kubernetes Client
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `K8S_CLIENT_CONNECTION_TIMEOUT_MS` | `10000` | K8s API connection timeout |
 | `K8S_CLIENT_REQUEST_TIMEOUT_MS` | `30000` | K8s API request timeout |
 | `K8S_CLIENT_MAX_CONCURRENT_REQUESTS` | `200` | Max parallel K8s API calls |
+
+### Metrics
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `METRICS_PERCENTILES` | `0.5,0.9,0.99` | Latency histogram percentiles |
-| `METRICS_SLO_MS` | `50,100,250,500,1000,2000,5000,10000,30000` | Histogram bucket boundaries |
+| `METRICS_SLO_MS` | `50,100,250,...,30000` | Histogram bucket boundaries |
+
+## TLS Examples
+
+### HTTPS only (K8s Secret)
+
+```yaml
+env:
+  - name: TLS_ENABLED
+    value: "true"
+  - name: TLS_CERT_PATH
+    value: "/etc/tls/tls.crt"
+  - name: TLS_KEY_PATH
+    value: "/etc/tls/tls.key"
+volumeMounts:
+  - name: tls-cert
+    mountPath: /etc/tls
+    readOnly: true
+volumes:
+  - name: tls-cert
+    secret:
+      secretName: spark-submitter-tls
+```
+
+### HTTPS + mTLS
+
+```yaml
+env:
+  - name: TLS_ENABLED
+    value: "true"
+  - name: TLS_CERT_PATH
+    value: "/etc/tls/tls.crt"
+  - name: TLS_KEY_PATH
+    value: "/etc/tls/tls.key"
+  - name: TLS_CA_CERT_PATH
+    value: "/etc/tls-ca/ca.crt"
+```
+
+### With cert auto-reload
+
+```yaml
+env:
+  - name: TLS_CERT_RELOAD_ENABLED
+    value: "true"
+  - name: TLS_CERT_CHECK_INTERVAL_MS
+    value: "3600000"  # check every 60 min
+```
+
+### K8s probes (always use probe port)
+
+```yaml
+ports:
+  - name: api
+    containerPort: 8080
+  - name: probes
+    containerPort: 8081
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: probes
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: probes
+```
 
 ## Building
 
 ```bash
 make help       # show all targets
-make build      # compile
+make build      # compile (uses ./mvnw)
 make test       # run tests
 make package    # build JAR (skip tests)
 make image      # build JAR + Docker image
@@ -255,7 +346,7 @@ The service JAR is a thin layer (~1MB) on top of the Spark base image. All Spark
 - **HTTP Server**: Jetty (shaded inside spark-core)
 - **K8s Client**: Fabric8 7.1.0
 - **Metrics**: Micrometer Prometheus
-- **Build**: Maven + scala-maven-plugin
+- **Build**: Maven (via `./mvnw` wrapper)
 
 ## Credits
 
