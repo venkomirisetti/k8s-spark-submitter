@@ -5,7 +5,7 @@ VERSION       := $(shell ./mvnw help:evaluate -Dexpression=project.version -q -D
 SPARK_IMAGE   ?= docker.io/library/spark:4.0.1
 SPARK_VERSION ?= 4.0.1
 BUILD_NUMBER  ?= 1
-DOCKER_REPO   ?= vkomirisetti/k8s-spark-submitter
+DOCKER_REPO   ?= venkomirisetti/k8s-spark-submitter
 IMAGE_TAG     ?= $(DOCKER_REPO):$(SPARK_VERSION)-$(BUILD_NUMBER)
 
 # ------------------------------------------------------------------------------

@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  DOCKER_REPO: vkomirisetti/k8s-spark-submitter
+  DOCKER_REPO: venkomirisetti/k8s-spark-submitter
   SPARK_VERSION: "4.0.1"
 
 jobs:

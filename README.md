@@ -351,7 +351,7 @@ The service JAR is a thin layer (~1MB) on top of the Spark base image. All Spark
 ## CI/CD
 
 - **PR Validation**: Tests run automatically on every pull request
-- **Docker Push**: Image pushed to Docker Hub on merge to main (`vkomirisetti/k8s-spark-submitter:<spark-version>-<build>`)
+- **Docker Push**: Image pushed to Docker Hub on merge to main (`venkomirisetti/k8s-spark-submitter:<spark-version>-<build>`)
 
 ## Credits
 
