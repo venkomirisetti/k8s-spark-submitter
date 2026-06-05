@@ -37,7 +37,7 @@
         <scalatest-maven-plugin.version>2.2.0</scalatest-maven-plugin.version>
 
         <!-- Java 17 compatibility for tests -->
-        <java17.test.jvm.flags>-Djdk.attach.allowAttachSelf=true</java17.test.jvm.flags>
+        <java17.test.jvm.flags>-Djdk.attach.allowAttachSelf=true --add-opens java.base/sun.security.x509=ALL-UNNAMED</java17.test.jvm.flags>
 
         <!-- Project encoding -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -248,6 +248,7 @@
                     <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
                     <junitxml>.</junitxml>
                     <filereports>TestSuite.txt</filereports>
+                    <argLine>${java17.test.jvm.flags}</argLine>
                 </configuration>
                 <executions>
                     <execution>

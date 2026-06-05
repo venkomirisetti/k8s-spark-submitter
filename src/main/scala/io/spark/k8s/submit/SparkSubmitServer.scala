@@ -4,24 +4,27 @@ import io.spark.k8s.submit.api.ApiPaths
 import io.spark.k8s.submit.api.servlet.{HealthServlet, MetricsServlet, SparkSubmitServlet}
 import io.spark.k8s.submit.metrics.{SparkSubmitMetrics, SparkSubmitMetricsFilter}
 import io.spark.k8s.submit.service.{KubernetesClientProvider, SparkSubmitter}
-import org.sparkproject.jetty.server.{Server, ServerConnector}
+import io.spark.k8s.submit.tls.{CertReloadFilter, CertReloadWatcher, TlsContextLoader}
+import jakarta.servlet.DispatcherType
+import org.slf4j.LoggerFactory
+import org.sparkproject.jetty.server.handler.HandlerList
+import org.sparkproject.jetty.server.{AbstractConnectionFactory, HttpConnectionFactory, Server, ServerConnector}
 import org.sparkproject.jetty.servlet.{FilterHolder, ServletContextHandler, ServletHolder}
 import org.sparkproject.jetty.util.thread.QueuedThreadPool
-import org.slf4j.LoggerFactory
 
-import jakarta.servlet.DispatcherType
+import java.util
 
 /**
- * HTTP server entry point for the Spark Submit REST API.
+ * HTTP/HTTPS server entry point for the Spark Submit REST API.
  *
- * Endpoints:
- * - POST /spark-submit              — Submit a Spark driver pod to Kubernetes
- * - POST /spark-submit?dryRun=true  — Validate submission without creating K8s resources
- * - GET  /health                    — Liveness/readiness probe
- * - GET  /metrics                   — Prometheus metrics
+ * Dual-port architecture:
+ *  - API port (default 8080): /spark-submit — HTTP or HTTPS depending on TLS config
+ *  - Probe port (default 8081): /health, /metrics — always plain HTTP
  *
- * Fire-and-forget: returns as soon as the driver pod is created in K8s.
- * The caller is responsible for tracking job progress via the Spark UI or K8s API.
+ * TLS modes (configured via environment variables):
+ *  - TLS disabled: both ports plain HTTP
+ *  - TLS enabled: API port serves HTTPS; mTLS when CA cert is provided
+ *  - Cert reload: optionally checks for cert file changes on incoming requests
  */
 object SparkSubmitServer {
 
@@ -33,7 +36,9 @@ object SparkSubmitServer {
 
     try {
       server.start()
-      log.info(s"SparkSubmitServer started on port ${ServerConfig.Server.port}")
+      val scheme = if (ServerConfig.Tls.enabled) "https" else "http"
+      log.info(s"SparkSubmitServer API started on $scheme port ${ServerConfig.Server.port}")
+      log.info(s"SparkSubmitServer probes started on http port ${ServerConfig.Server.probePort}")
       server.join()
     } catch {
       case e: Exception =>
@@ -45,20 +50,32 @@ object SparkSubmitServer {
   private def registerShutdownHook(server: Server): Unit =
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       log.info("Shutting down SparkSubmitServer...")
-      try { server.stop(); log.info("Server stopped") }
-      catch { case e: Exception => log.error("Error during shutdown", e) }
+      try {
+        server.stop(); log.info("Server stopped")
+      }
+      catch {
+        case e: Exception => log.error("Error during shutdown", e)
+      }
     }))
 
-  /** Assembles server with thread pool, connector, servlet context and shutdown timeout. */
   private def createServer(): Server = {
     val server = new Server(createThreadPool())
-    server.addConnector(createConnector(server))
-    server.setHandler(createContext())
+
+    val metrics = new SparkSubmitMetrics()
+    val submitter = new SparkSubmitter(new KubernetesClientProvider())
+
+    val (apiConnector, certReloadWatcher) = createApiConnector(server)
+    server.addConnector(apiConnector)
+    server.addConnector(createProbeConnector(server))
+
+    val handlers = new HandlerList()
+    handlers.addHandler(createApiContext(metrics, submitter, certReloadWatcher))
+    handlers.addHandler(createProbeContext(metrics))
+    server.setHandler(handlers)
     server.setStopTimeout(ServerConfig.Server.shutdownTimeoutMs)
     server
   }
 
-  /** Bounded thread pool for handling HTTP requests. */
   private def createThreadPool(): QueuedThreadPool = {
     val pool = new QueuedThreadPool(
       ServerConfig.Server.maxThreads,
@@ -69,31 +86,72 @@ object SparkSubmitServer {
     pool
   }
 
-  /** HTTP connector bound to the configured address and port. */
-  private def createConnector(server: Server): ServerConnector = {
+  private def createApiConnector(server: Server): (ServerConnector, Option[CertReloadWatcher]) = {
+    if (ServerConfig.Tls.enabled) {
+      val certPath = ServerConfig.Tls.certPath
+      val keyPath = ServerConfig.Tls.keyPath
+      val caCertPath = ServerConfig.Tls.caCertPath
+
+      val sslContextFactory = TlsContextLoader.createSslContextFactory(certPath, keyPath, caCertPath)
+
+      val httpConnectionFactory = new HttpConnectionFactory()
+      val connectionFactories = AbstractConnectionFactory.getFactories(sslContextFactory, httpConnectionFactory)
+
+      val connector = new ServerConnector(server, connectionFactories: _*)
+      connector.setHost(ServerConfig.Server.address)
+      connector.setPort(ServerConfig.Server.port)
+      connector.setAcceptQueueSize(ServerConfig.Server.acceptQueueSize)
+      connector.setIdleTimeout(ServerConfig.Server.connectionIdleTimeoutMs)
+      connector.setName("api-tls")
+
+      val watcher = Option.when(ServerConfig.Tls.certReloadEnabled){
+        new CertReloadWatcher(sslContextFactory, certPath, keyPath, caCertPath,
+          ServerConfig.Tls.certCheckIntervalMs, ServerConfig.Tls.certVerifyWithHash)
+      }
+
+      (connector, watcher)
+    } else {
+      (createPlainConnector(server, ServerConfig.Server.port, "api"), None)
+    }
+  }
+
+  private def createProbeConnector(server: Server): ServerConnector =
+    createPlainConnector(server, ServerConfig.Server.probePort, "probes")
+
+  private def createPlainConnector(server: Server, port: Int, name: String): ServerConnector = {
     val connector = new ServerConnector(server)
     connector.setHost(ServerConfig.Server.address)
-    connector.setPort(ServerConfig.Server.port)
+    connector.setPort(port)
     connector.setAcceptQueueSize(ServerConfig.Server.acceptQueueSize)
     connector.setIdleTimeout(ServerConfig.Server.connectionIdleTimeoutMs)
+    connector.setName(name)
     connector
   }
 
-  /** Wires metrics filter and all servlet endpoints into a single context. */
-  private def createContext(): ServletContextHandler = {
-    val metrics = new SparkSubmitMetrics()
-    val submitter = new SparkSubmitter(new KubernetesClientProvider())
-
-    // Servlet context at base path, sessions disabled (stateless REST API)
+  private def createApiContext(
+                                metrics: SparkSubmitMetrics,
+                                submitter: SparkSubmitter,
+                                certReloadWatcher: Option[CertReloadWatcher]): ServletContextHandler = {
     val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
     context.setContextPath(ApiPaths.Base)
+    context.setVirtualHosts(Array("@api", "@api-tls"))
 
-    // Metrics filter intercepts all requests for latency and count tracking
-    context.addFilter(new FilterHolder(new SparkSubmitMetricsFilter(metrics)), "/*",
-      java.util.EnumSet.of(DispatcherType.REQUEST))
+    // Cert reload check filter — first in chain, sub-nanosecond when debounced
+    certReloadWatcher.foreach { watcher =>
+      context.addFilter(new FilterHolder(new CertReloadFilter(watcher)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
+    }
 
-    // Register endpoints: spark-submit, metrics, health
+    context.addFilter(new FilterHolder(new SparkSubmitMetricsFilter(metrics)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
+
     context.addServlet(new ServletHolder(new SparkSubmitServlet(submitter)), ApiPaths.SparkSubmit)
+    context
+  }
+
+  private def createProbeContext(metrics: SparkSubmitMetrics): ServletContextHandler = {
+    val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
+    context.setContextPath(ApiPaths.Base)
+    context.setVirtualHosts(Array("@probes"))
+
     context.addServlet(new ServletHolder(new MetricsServlet(metrics)), ApiPaths.Metrics)
     context.addServlet(new ServletHolder(new HealthServlet), ApiPaths.Health)
     context
