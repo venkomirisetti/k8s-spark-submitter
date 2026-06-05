@@ -36,15 +36,44 @@ object SparkSubmitServer {
 
     try {
       server.start()
-      val scheme = if (ServerConfig.Tls.enabled) "https" else "http"
-      log.info(s"SparkSubmitServer API started on $scheme port ${ServerConfig.Server.port}")
-      log.info(s"SparkSubmitServer probes started on http port ${ServerConfig.Server.probePort}")
+      printBanner()
       server.join()
     } catch {
       case e: Exception =>
         log.error("Failed to start server", e)
         System.exit(1)
     }
+  }
+
+  private def printBanner(): Unit = {
+    val scheme = if (ServerConfig.Tls.enabled) "https" else "http"
+    val security = if (ServerConfig.Tls.caCertPath.isDefined) "mTLS .............. enabled"
+      else if (ServerConfig.Tls.enabled) "TLS ............... enabled"
+      else "TLS ............... disabled"
+    val reload = if (ServerConfig.Tls.certReloadEnabled) "enabled" else "disabled"
+
+    val tlsDetails = if (ServerConfig.Tls.enabled)
+      s"""  | certPath .......... ${ServerConfig.Tls.certPath}
+         |  | keyPath ........... ${ServerConfig.Tls.keyPath}
+         |  | caCertPath ........ ${ServerConfig.Tls.caCertPath.getOrElse("(not set)")}
+         |  | certReload ........ $reload
+         |  | checkInterval ..... ${ServerConfig.Tls.certCheckIntervalMs}ms
+         |  | hashVerify ........ ${ServerConfig.Tls.certVerifyWithHash}""".stripMargin
+    else
+      "  | (no TLS configuration)"
+
+    log.info(
+      s"""
+         |  ============================================================
+         |  ::  Spark Submitter on Kubernetes  ::  Started
+         |  ============================================================
+         |  | apiPort ........... ${ServerConfig.Server.port} ($scheme)
+         |  | probePort ......... ${ServerConfig.Server.probePort} (http)
+         |  | $security
+         |  ------------------------------------------------------------
+         |$tlsDetails
+         |  ============================================================
+         |""".stripMargin)
   }
 
   private def registerShutdownHook(server: Server): Unit =
