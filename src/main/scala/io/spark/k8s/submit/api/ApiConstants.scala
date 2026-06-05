@@ -16,7 +16,7 @@ object HttpStatus {
 
 /** API endpoint paths. */
 object ApiPaths {
-  val Base = "/"
+  val Base = "/api/v1"
   val SparkSubmit = "/spark-submit"
   val Metrics = "/metrics"
   val Health = "/health"
