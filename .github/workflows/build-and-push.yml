@@ -1,4 +1,4 @@
-name: Build and Push
+name: Release
 
 on:
   push:
@@ -9,7 +9,7 @@ env:
   SPARK_VERSION: "4.0.1"
 
 jobs:
-  build-test-push:
+  docker-push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
