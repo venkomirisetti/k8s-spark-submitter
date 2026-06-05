@@ -1,15 +1,18 @@
 SHELL := /bin/bash
 
-APP_NAME    := k8s-spark-submitter
-VERSION     := $(shell ./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null || echo "1.0.0")
-SPARK_IMAGE ?= docker.io/library/spark:4.0.1
-IMAGE_TAG   ?= $(APP_NAME):$(VERSION)
+APP_NAME      := k8s-spark-submitter
+VERSION       := $(shell ./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null || echo "1.0.0")
+SPARK_IMAGE   ?= docker.io/library/spark:4.0.1
+SPARK_VERSION ?= 4.0.1
+BUILD_NUMBER  ?= 1
+DOCKER_REPO   ?= vkomirisetti/k8s-spark-submitter
+IMAGE_TAG     ?= $(DOCKER_REPO):$(SPARK_VERSION)-$(BUILD_NUMBER)
 
 # ------------------------------------------------------------------------------
 # Build
 # ------------------------------------------------------------------------------
 
-.PHONY: build test package clean image run
+.PHONY: build test package clean image push run
 
 build:
 	./mvnw clean compile
@@ -32,6 +35,13 @@ image: package
 
 image-only:
 	docker build --build-arg SPARK_IMAGE=$(SPARK_IMAGE) -t $(IMAGE_TAG) .
+
+push: image
+	docker tag $(IMAGE_TAG) $(DOCKER_REPO):$(SPARK_VERSION)-latest
+	docker tag $(IMAGE_TAG) $(DOCKER_REPO):latest
+	docker push $(IMAGE_TAG)
+	docker push $(DOCKER_REPO):$(SPARK_VERSION)-latest
+	docker push $(DOCKER_REPO):latest
 
 # ------------------------------------------------------------------------------
 # Run
@@ -58,10 +68,14 @@ help:
 	@echo "Docker:"
 	@echo "  image       Build JAR and Docker image"
 	@echo "  image-only  Build Docker image (assumes JAR exists)"
+	@echo "  push        Build, tag, and push to Docker Hub"
 	@echo ""
 	@echo "Run:"
 	@echo "  run         Build and run locally"
 	@echo ""
 	@echo "Variables:"
-	@echo "  SPARK_IMAGE  Base Spark image (default: $(SPARK_IMAGE))"
-	@echo "  IMAGE_TAG    Docker image tag (default: $(IMAGE_TAG))"
+	@echo "  SPARK_IMAGE      Base Spark image (default: $(SPARK_IMAGE))"
+	@echo "  DOCKER_REPO      Docker Hub repo (default: $(DOCKER_REPO))"
+	@echo "  SPARK_VERSION    Spark version in tag (default: $(SPARK_VERSION))"
+	@echo "  BUILD_NUMBER     Build number in tag (default: $(BUILD_NUMBER))"
+	@echo "  IMAGE_TAG        Full image tag (default: $(IMAGE_TAG))"
