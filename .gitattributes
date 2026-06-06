@@ -1,0 +1,4 @@
+mvnw linguist-vendored
+mvnw.cmd linguist-vendored
+scripts/* linguist-vendored
+docs/* linguist-documentation
