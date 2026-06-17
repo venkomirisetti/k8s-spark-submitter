@@ -13,7 +13,9 @@ trait ServletTestSupport {
     val req = mock(classOf[HttpServletRequest])
     val resp = mock(classOf[HttpServletResponse])
     val writer = mock(classOf[PrintWriter])
+    val outputStream = mock(classOf[ServletOutputStream])
     when(resp.getWriter).thenReturn(writer)
+    when(resp.getOutputStream).thenReturn(outputStream)
     (req, resp, writer)
   }
 
