@@ -69,7 +69,7 @@ class SparkSubmitEndToEndTest extends AnyFlatSpec
     val submitter = createSubmitter()
     val masterUrl = getKubeClient.getConfiguration.getMasterUrl
     val args = buildSparkSubmitArgs(masterUrl, SparkPiClass, appName, namespace, SparkImage, LocalJar, additionalConf)
-    val request = SparkSubmitRequest(args, driverTemplate, executorTemplate)
+    val request = SparkSubmitRequest(sparkSubmitArgs = args, driverPodTemplate = driverTemplate, executorPodTemplate = executorTemplate)
 
     val response = submitter.submitJob(request)
 

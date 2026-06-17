@@ -4,10 +4,14 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import io.spark.k8s.submit.util.JsonToStringDeserializer
 
+import java.util.UUID
 import scala.beans.BeanProperty
 
 /** Spark job submission request. */
 case class SparkSubmitRequest(
+    @JsonProperty("submission_id")
+    @BeanProperty submissionId: String = s"G-${UUID.randomUUID()}",
+
     @JsonProperty("spark_submit_args")
     @BeanProperty sparkSubmitArgs: java.util.List[String],
 
