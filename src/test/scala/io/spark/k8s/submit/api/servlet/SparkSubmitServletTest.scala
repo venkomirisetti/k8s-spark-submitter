@@ -12,7 +12,7 @@ import org.scalatest.matchers.should.Matchers
 class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestSupport {
 
   private val validJson = """{"spark_submit_args":["--master","local","--class","Main","app.jar"]}"""
-  private val successResponse = SparkSubmitResponse("app", "ok", "t", "id", "pod", "uid", "ns")
+  private val successResponse = SparkSubmitResponse("sub-id", "app", "ok", "t", "id", "pod", "uid", "ns")
 
   "SparkSubmitServlet" should "return 201 on successful submission" in {
     val submitter = mockSubmitter(successResponse)

@@ -45,10 +45,10 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
     val appName = conf.get(SparkConstants.AppName)
     log.debug(s"Submitting: app=$appName, ns=${conf.get(K8sNamespaceKey, K8sNamespaceDefault)}, dryRun=$dryRun")
 
-    val templateDirOpt = createPodTemplates(request, conf)
+    val templateDirOpt = createPodTemplates(request, request.submissionId, conf)
     try {
       val r = K8sSparkClient.submit(args, k8sProvider.client, dryRun)
-      SparkSubmitResponse.success(appName, r.sparkAppId, r.driverPodName, r.driverPodUid, r.namespace)
+      SparkSubmitResponse.success(request.submissionId, appName, r.sparkAppId, r.driverPodName, r.driverPodUid, r.namespace)
     } catch {
       case e: Exception => throw wrapAsSparkSubmitException(e, dryRun)
     } finally {
@@ -58,15 +58,14 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
 
   /** Submit with raw spark-submit args (like SparkSubmit.Main). */
   def submitJob(args: Array[String]): SparkSubmitResponse = {
-    submitJob(SparkSubmitRequest(JavaArrays.asList(args: _*), null, null))
+    submitJob(SparkSubmitRequest(sparkSubmitArgs = JavaArrays.asList(args: _*)))
   }
 
-  private def createPodTemplates(request: SparkSubmitRequest, conf: SparkConf): Option[Path] = {
+  private def createPodTemplates(request: SparkSubmitRequest, submissionId: String, conf: SparkConf): Option[Path] = {
     val hasTemplates = request.driverTemplate.exists(_.nonEmpty) || request.executorTemplate.exists(_.nonEmpty)
     if (!hasTemplates) return None
 
-    // Use epoch (nanoseconds) for unique, chronologically-sortable directory name
-    val templateDir = PodTemplateUtils.createTemplateDirForSubmission(s"submission_${System.nanoTime()}_${UUID.randomUUID()}")
+    val templateDir = PodTemplateUtils.createTemplateDirForSubmission(submissionId)
     configurePodTemplate(request.driverTemplate, K8sDriverTemplateKey, SparkConstants.DriverPodTemplate, templateDir, conf)
     configurePodTemplate(request.executorTemplate, K8sExecutorTemplateKey, SparkConstants.ExecutorPodTemplate, templateDir, conf)
 

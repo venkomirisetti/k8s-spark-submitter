@@ -9,6 +9,7 @@ import scala.beans.BeanProperty
 /** Spark job submission response. */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 case class SparkSubmitResponse(
+    @JsonProperty("submission_id") @BeanProperty submissionId: String,
     @JsonProperty("app_name") @BeanProperty appName: String,
     @JsonProperty("message") @BeanProperty message: String,
     @JsonProperty("submitted_at") @BeanProperty submittedAt: String,
@@ -19,6 +20,6 @@ case class SparkSubmitResponse(
 )
 
 object SparkSubmitResponse {
-  def success(appName: String, sparkAppId: String, driverPodName: String, driverPodUid: String, namespace: String): SparkSubmitResponse =
-    SparkSubmitResponse(appName, Messages.SubmitSuccess, Instant.now.toString, sparkAppId, driverPodName, driverPodUid, namespace)
+  def success(submissionId: String, appName: String, sparkAppId: String, driverPodName: String, driverPodUid: String, namespace: String): SparkSubmitResponse =
+    SparkSubmitResponse(submissionId, appName, Messages.SubmitSuccess, Instant.now.toString, sparkAppId, driverPodName, driverPodUid, namespace)
 }

@@ -16,9 +16,10 @@ class SparkSubmitRequestTest extends AnyFlatSpec with Matchers {
     val driverTemplate = "{\"metadata\":{\"name\":\"driver\"}}"
     val executorTemplate = "{\"metadata\":{\"name\":\"executor\"}}"
 
-    val request = SparkSubmitRequest(args, driverTemplate, executorTemplate)
+    val request = SparkSubmitRequest("test-id", args, driverTemplate, executorTemplate)
 
     // Verify BeanProperty getters (required for Jackson)
+    request.getSubmissionId shouldBe "test-id"
     request.getSparkSubmitArgs shouldBe args
     request.getDriverPodTemplate shouldBe driverTemplate
     request.getExecutorPodTemplate shouldBe executorTemplate
@@ -31,11 +32,11 @@ class SparkSubmitRequestTest extends AnyFlatSpec with Matchers {
     val whitespace = "  "
 
     // Test filtering: Some(value), None for null, None for empty
-    SparkSubmitRequest(args, template, template).driverTemplate shouldBe Some(template)
-    SparkSubmitRequest(args, null, null).driverTemplate shouldBe None
-    SparkSubmitRequest(args, emptyString, emptyString).executorTemplate shouldBe None
+    SparkSubmitRequest(sparkSubmitArgs = args, driverPodTemplate = template, executorPodTemplate = template).driverTemplate shouldBe Some(template)
+    SparkSubmitRequest(sparkSubmitArgs = args, driverPodTemplate = null, executorPodTemplate = null).driverTemplate shouldBe None
+    SparkSubmitRequest(sparkSubmitArgs = args, driverPodTemplate = emptyString, executorPodTemplate = emptyString).executorTemplate shouldBe None
 
     // Edge case: whitespace is NOT filtered (nonEmpty returns true)
-    SparkSubmitRequest(args, whitespace, null).driverTemplate shouldBe Some(whitespace)
+    SparkSubmitRequest(sparkSubmitArgs = args, driverPodTemplate = whitespace, executorPodTemplate = null).driverTemplate shouldBe Some(whitespace)
   }
 }

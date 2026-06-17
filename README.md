@@ -139,8 +139,16 @@ Dual-port architecture — API and probes are served on separate ports:
 
 ### Basic Request
 
+| Field | Required | Description |
+|-------|----------|-------------|
+| `submission_id` | No | Correlation ID for log filtering. Auto-generated UUID if omitted (`G-<uuid>`) |
+| `spark_submit_args` | Yes | Array of spark-submit CLI arguments |
+| `driver_pod_template` | No | Driver pod template as nested JSON object |
+| `executor_pod_template` | No | Executor pod template as nested JSON object |
+
 ```json
 {
+  "submission_id": "my-correlation-id-123",
   "spark_submit_args": [
     "--master", "k8s://https://kubernetes.default.svc:443",
     "--deploy-mode", "cluster",
@@ -154,12 +162,15 @@ Dual-port architecture — API and probes are served on separate ports:
 }
 ```
 
+> **Note:** `submission_id` is optional. If omitted, a UUID is auto-generated (e.g., `G-550e8400-e29b-41d4-a716-446655440000`). It is included in all server-side log lines for the request, enabling easy log filtering for debugging.
+
 ### With Pod Templates
 
 Pod templates are nested JSON objects (no escaping needed):
 
 ```json
 {
+  "submission_id": "batch-run-456",
   "spark_submit_args": [
     "--master", "k8s://https://kubernetes.default.svc:443",
     "--deploy-mode", "cluster",
@@ -194,6 +205,7 @@ Pod templates are nested JSON objects (no escaping needed):
 
 ```json
 {
+  "submission_id": "my-correlation-id-123",
   "app_name": "my-spark-job",
   "message": "Spark driver pod created successfully",
   "submitted_at": "2026-02-04T22:44:02.123Z",
