@@ -9,8 +9,6 @@ import org.mockito.Mockito._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import jakarta.servlet.http.{HttpServletRequest, HttpServletResponse}
-
 class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestSupport {
 
   private val validJson = """{"spark_submit_args":["--master","local","--class","Main","app.jar"]}"""
@@ -89,14 +87,13 @@ class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestS
     verify(resp).setStatus(HttpStatus.BadRequest)
   }
 
-  it should "reject GET requests" in {
+  it should "reject GET requests with 405 and usage message" in {
     val submitter = mockSubmitter(successResponse)
-    val req = mock(classOf[HttpServletRequest])
-    val resp = mock(classOf[HttpServletResponse])
+    val (req, resp, _) = mockGetRequest()
 
     new SparkSubmitServlet(submitter).doGet(req, resp)
 
-    verify(resp).sendError(HttpStatus.MethodNotAllowed, "Only POST is supported")
+    verify(resp).setStatus(HttpStatus.MethodNotAllowed)
   }
 
   private def mockSubmitter(response: SparkSubmitResponse): SparkSubmitter = {

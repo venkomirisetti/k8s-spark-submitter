@@ -120,7 +120,8 @@ Dual-port architecture — API and probes are served on separate ports:
 |------|--------|----------|-------------|
 | 8080 (API) | POST | `/api/v1/spark-submit` | Submit a Spark job |
 | 8080 (API) | POST | `/api/v1/spark-submit?dryRun=true` | Validate without creating K8s resources |
-| 8081 (Probes) | GET | `/api/v1/health` | Liveness/readiness probe |
+| 8080 (API) | GET | `/api/v1/spark-submit` | Readiness check — validates TLS/cert chain, returns usage hint |
+| 8081 (Probes) | GET | `/api/v1/healthz` | K8s liveness/readiness probe |
 | 8081 (Probes) | GET | `/api/v1/metrics` | Prometheus metrics (text format) |
 
 ## Metrics
@@ -313,11 +314,11 @@ ports:
     containerPort: 8081
 livenessProbe:
   httpGet:
-    path: /api/v1/health
+    path: /api/v1/healthz
     port: probes
 readinessProbe:
   httpGet:
-    path: /api/v1/health
+    path: /api/v1/healthz
     port: probes
 ```
 

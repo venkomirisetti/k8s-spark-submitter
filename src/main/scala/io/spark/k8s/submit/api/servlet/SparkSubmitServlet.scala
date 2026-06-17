@@ -57,7 +57,8 @@ class SparkSubmitServlet(sparkSubmitter: SparkSubmitter) extends HttpServlet wit
   }
 
   override def doGet(req: HttpServletRequest, resp: HttpServletResponse): Unit = {
-    resp.sendError(HttpStatus.MethodNotAllowed, "Only POST is supported")
+    sendError(resp, HttpStatus.MethodNotAllowed, "METHOD_NOT_ALLOWED",
+      "Use POST with a JSON payload to submit Spark applications")
   }
 
   private def handleSparkSubmitException(resp: HttpServletResponse, ex: SparkSubmitException): Unit = {
