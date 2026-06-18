@@ -1,9 +1,9 @@
 package org.apache.spark.deploy
 
 import io.spark.k8s.submit.SparkSubmitException
-import io.spark.k8s.submit.api.Messages
+import io.spark.k8s.submit.api.ErrorCode
+import org.apache.spark.SparkConf
 import org.apache.spark.deploy.k8s.submit.{MainAppResource, ClientArguments => K8sClientArguments}
-import org.apache.spark.{SparkConf, SparkException}
 
 import scala.jdk.CollectionConverters._
 
@@ -39,9 +39,9 @@ object K8sSparkSubmitArgsParser {
       K8sSparkSubmitArgs(sparkConf, k8sArgs.mainAppResource, k8sArgs.mainClass, k8sArgs.driverArgs, k8sArgs.proxyUser)
     } catch {
       case e: SparkSubmitException => throw e
-      case e: IllegalArgumentException => throw SparkSubmitException.validation(Messages.InvalidJobConfig, e)
-      case e: SparkException => throw SparkSubmitException.validation(Messages.InvalidJobConfig, e)
-      case e: Exception => throw SparkSubmitException.submission(s"Failed to parse arguments: ${e.getMessage}", e)
+      case e: Exception =>
+        val msg = s"Invalid spark-submit arguments: ${e.getMessage}"
+        throw SparkSubmitException.of(ErrorCode.InvalidSparkSubmitArgs, msg, e)
     }
   }
 
@@ -49,10 +49,8 @@ object K8sSparkSubmitArgsParser {
   private def validateClusterMode(sparkArgs: SparkSubmitArguments): Unit = {
     val mode = sparkArgs.deployMode
     if (mode != "cluster") {
-      throw SparkSubmitException.validation(
-        Messages.InvalidJobConfig,
-        s"Only cluster deploy mode is supported (--deploy-mode cluster or --conf spark.submit.deployMode=cluster), received: $mode"
-      )
+      val msg = s"Invalid spark-submit arguments: Only cluster deploy mode is supported (--deploy-mode cluster or --conf spark.submit.deployMode=cluster), received: $mode"
+      throw SparkSubmitException.of(ErrorCode.InvalidSparkSubmitArgs, msg)
     }
   }
 }
