@@ -1,5 +1,6 @@
 package io.spark.k8s.submit.model
 
+import io.spark.k8s.submit.api.ErrorCode
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -7,38 +8,31 @@ import java.time.Instant
 
 class ErrorResponseTest extends AnyFlatSpec with Matchers {
 
-  "ErrorResponse.badRequest" should "create error with ISO-8601 timestamp" in {
+  "ErrorResponse.of" should "create error with ISO-8601 timestamp" in {
     val before = Instant.now
-    val response = ErrorResponse.badRequest("msg", "detail")
+    val response = ErrorResponse.of("sub-123", 400, ErrorCode.BadRequest, "bad input")
     val after = Instant.now
 
-    response.message shouldBe "msg"
-    response.details shouldBe "detail"
+    response.submissionId shouldBe "sub-123"
+    response.status shouldBe 400
+    response.errorCode shouldBe ErrorCode.BadRequest
+    response.message shouldBe "bad input"
 
     val timestamp = Instant.parse(response.timestamp)
     timestamp should (be >= before and be <= after)
   }
 
-  it should "handle null details" in {
-    val response = ErrorResponse.badRequest("msg", null)
-    response.details shouldBe null
+  it should "handle null submissionId" in {
+    val response = ErrorResponse.of(null, 422, ErrorCode.DriverPodAlreadyExists, "already exists")
+    response.submissionId shouldBe null
   }
 
-  "ErrorResponse.internalError" should "create error with null details" in {
-    val response = ErrorResponse.internalError("msg")
+  it should "create error with various error codes" in {
+    val response = ErrorResponse.of("sub-456", 503, ErrorCode.SubmitterOverloaded, "retry later")
 
-    response.message shouldBe "msg"
-    response.details shouldBe null
-    noException should be thrownBy Instant.parse(response.timestamp)
-  }
-
-  "ErrorResponse.of" should "create error with custom status and error code" in {
-    val response = ErrorResponse.of(422, "ERR", "msg", "detail")
-
-    response.status shouldBe 422
-    response.error shouldBe "ERR"
-    response.message shouldBe "msg"
-    response.details shouldBe "detail"
+    response.status shouldBe 503
+    response.errorCode shouldBe ErrorCode.SubmitterOverloaded
+    response.message shouldBe "retry later"
     noException should be thrownBy Instant.parse(response.timestamp)
   }
 }

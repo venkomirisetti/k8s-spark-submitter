@@ -224,10 +224,14 @@ Same response format. No K8s resources are created — validates RBAC, schema, q
 
 | Status | Error Code | When |
 |--------|-----------|------|
-| 400 | `BAD_REQUEST` | Malformed JSON or invalid spark-submit args |
-| 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type is not `application/json` |
-| 422 | `SUBMISSION_FAILED` | Valid args but K8s rejected (RBAC, quota, etc.) |
-| 503 | `SERVICE_UNAVAILABLE` | Transient K8s error (retryable: 401, 429, 5xx) |
+| 400 | `BAD_REQUEST` | Malformed JSON body |
+| 400 | `INVALID_SPARK_SUBMIT_ARGS` | Invalid spark-submit arguments |
+| 405 | `METHOD_NOT_ALLOWED` | Non-POST request to /spark-submit |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type is not application/json |
+| 422 | `DRIVER_POD_ALREADY_EXISTS` | Pod name conflict (K8s 409) |
+| 422 | `INVALID_POD_TEMPLATE` | K8s rejected pod template (K8s 422) |
+| 500 | `INTERNAL_SERVER_ERROR` | Unexpected failures (K8s 401, 403, 5xx) |
+| 503 | `SUBMITTER_OVERLOADED` | Transient errors (K8s 429, network timeouts) |
 
 ## Configuration
 

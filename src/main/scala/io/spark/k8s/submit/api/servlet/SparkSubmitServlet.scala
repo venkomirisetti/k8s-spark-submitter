@@ -22,17 +22,19 @@ class SparkSubmitServlet(sparkSubmitter: SparkSubmitter) extends HttpServlet wit
   protected val log: Logger = LoggerFactory.getLogger(getClass)
 
   override def doPost(req: HttpServletRequest, resp: HttpServletResponse): Unit = {
+    var submissionId: String = null
     try {
       Try {
         val contentType = req.getContentType
         if (contentType == null || !contentType.startsWith(MediaType.ApplicationJson)) {
-          throw new IllegalArgumentException(s"Content-Type must be ${MediaType.ApplicationJson}")
+          throw SparkSubmitException.of(ErrorCode.UnsupportedMediaType, Messages.ContentTypeMustBeJson)
         }
 
         val dryRun = Option(req.getParameter("dryRun")).exists(_.toLowerCase == "true")
         val request = parseJsonStream(req.getInputStream, classOf[SparkSubmitRequest]).get
 
-        MDC.put("submissionId", request.submissionId)
+        submissionId = request.submissionId
+        MDC.put("submissionId", submissionId)
 
         if (dryRun) log.debug(s"${LogPrefix.Request} [DRY-RUN] $request")
         else log.debug(s"${LogPrefix.Request} $request")
@@ -42,20 +44,19 @@ class SparkSubmitServlet(sparkSubmitter: SparkSubmitter) extends HttpServlet wit
         if (dryRun) log.info(s"${LogPrefix.Success} dryrun validation passed appName=${response.appName}")
         else logSubmissionSuccess(response)
 
-        sendJson(resp, if (dryRun) HttpStatus.Ok else HttpStatus.Created, response)
+        val status = if (dryRun || response.idempotentReplay) HttpStatus.Ok else HttpStatus.Created
+        sendJson(resp, status, response)
       } match {
         case Success(_) => // Already handled
-        case Failure(ex: SparkSubmitException) => handleSparkSubmitException(resp, ex)
+        case Failure(ex: SparkSubmitException) =>
+          logSubmissionFailure(ex)
+          sendErrorResponse(resp, ex, submissionId)
         case Failure(ex: IOException) =>
-          logSubmissionFailure(ErrorCode.BadRequest, Messages.MalformedRequest, ex.getMessage)
-          sendError(resp, HttpStatus.BadRequest, ErrorCode.BadRequest, Messages.MalformedRequest)
-        case Failure(ex: IllegalArgumentException) =>
-          logSubmissionFailure(ErrorCode.UnsupportedMediaType, Messages.ContentTypeMustBeJson, ex.getMessage)
-          sendError(resp, HttpStatus.UnsupportedMediaType, ErrorCode.UnsupportedMediaType, Messages.ContentTypeMustBeJson)
+          logSubmissionFailure(ex)
+          sendErrorResponse(resp, ErrorCode.BadRequest, Messages.MalformedRequest, submissionId)
         case Failure(ex) =>
-          logSubmissionFailure(ErrorCode.InternalError, Messages.UnexpectedError, ex.getMessage)
-          log.error(s"${LogPrefix.Error} Unexpected error", ex)
-          sendError(resp, HttpStatus.InternalServerError, ErrorCode.InternalError, Messages.UnexpectedError)
+          logSubmissionFailure(ex)
+          sendErrorResponse(resp, ErrorCode.InternalError, Messages.UnexpectedError, submissionId)
       }
     } finally {
       MDC.remove("submissionId")
@@ -63,22 +64,8 @@ class SparkSubmitServlet(sparkSubmitter: SparkSubmitter) extends HttpServlet wit
   }
 
   override def doGet(req: HttpServletRequest, resp: HttpServletResponse): Unit = {
-    sendError(resp, HttpStatus.MethodNotAllowed, "METHOD_NOT_ALLOWED",
+    sendErrorResponse(resp, ErrorCode.MethodNotAllowed,
       "Use POST with a JSON payload to submit Spark applications")
-  }
-
-  private def handleSparkSubmitException(resp: HttpServletResponse, ex: SparkSubmitException): Unit = {
-    if (ex.isValidationError) {
-      val details = ex.getDetails
-      logSubmissionFailure(ErrorCode.BadRequest, ex.getMessage, details)
-      sendError(resp, HttpStatus.BadRequest, ErrorCode.BadRequest, ex.getMessage, details)
-    } else if (ex.isTransient) {
-      logSubmissionFailure(ErrorCode.ServiceUnavailable, ex.getMessage, ex.getDetails)
-      sendError(resp, HttpStatus.ServiceUnavailable, ErrorCode.ServiceUnavailable, ex.getMessage, ex.getDetails)
-    } else {
-      logSubmissionFailure(ErrorCode.SubmissionFailed, ex.getMessage, ex.getDetails)
-      sendError(resp, HttpStatus.UnprocessableEntity, ErrorCode.SubmissionFailed, ex.getMessage, ex.getDetails)
-    }
   }
 
   private def logSubmissionSuccess(response: SparkSubmitResponse): Unit = {

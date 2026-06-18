@@ -1,7 +1,7 @@
 package io.spark.k8s.submit.util
 
+import io.spark.k8s.submit.api.ErrorCode
 import io.spark.k8s.submit.{SparkConstants, SparkSubmitException}
-import io.spark.k8s.submit.api.Messages
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.nio.file.{Files, Path}
@@ -37,7 +37,7 @@ object PodTemplateUtils {
       Files.createDirectories(dir)
       log.info(s"Created template directory: $dir")
       dir
-    }.getOrElse(throw SparkSubmitException.submission(Messages.CannotCreateTemplateDir))
+    }.getOrElse(throw SparkSubmitException.of(ErrorCode.InternalError, "Cannot create template directory"))
   }
 
   /** Writes template content to {baseDir}/{fileName}. */
@@ -51,7 +51,7 @@ object PodTemplateUtils {
       }.recover {
         case e: Exception =>
           log.warn(s"Failed to write template file: ${e.getMessage}")
-          throw SparkSubmitException.submission(s"Failed to write template file: ${e.getMessage}", e)
+          throw SparkSubmitException.of(ErrorCode.InternalError, s"Failed to write template file: ${e.getMessage}", e)
       }.toOption
     }
 

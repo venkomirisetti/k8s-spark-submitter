@@ -9,6 +9,8 @@ object SparkConstants {
 
   // Kubernetes label keys
   final val SparkAppSelectorLabel = "spark-app-selector"
+  final val SubmissionIdLabel = "spark-submitter/submission-id"
+  final val SubmissionIdLabelConfKey = s"spark.kubernetes.driver.label.$SubmissionIdLabel"
 
   // System properties
   final val JavaIoTmpDir = "java.io.tmpdir"

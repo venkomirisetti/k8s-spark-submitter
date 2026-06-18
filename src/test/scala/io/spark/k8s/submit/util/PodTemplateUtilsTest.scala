@@ -1,6 +1,7 @@
 package io.spark.k8s.submit.util
 
 import io.spark.k8s.submit.{SparkConstants, SparkSubmitException}
+import io.spark.k8s.submit.api.ErrorCode
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -110,7 +111,7 @@ class PodTemplateUtilsTest extends AnyFlatSpec with Matchers with BeforeAndAfter
       val exception = intercept[SparkSubmitException] {
         PodTemplateUtils.createTemplateDirForSubmission(dirName)
       }
-      exception.isValidationError shouldBe false
+      exception.errorCode shouldBe ErrorCode.InternalError
     } finally {
       Files.deleteIfExists(tempFile)
     }
