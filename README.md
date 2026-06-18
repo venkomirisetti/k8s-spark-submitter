@@ -212,7 +212,26 @@ Pod templates are nested JSON objects (no escaping needed):
   "spark_app_id": "spark-b992db7da52c42298736dcbb3c9142be",
   "driver_pod_name": "my-spark-job-cff6459c2aa9538c-driver",
   "driver_pod_uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "namespace": "spark-jobs"
+  "namespace": "spark-jobs",
+  "duplicate_submission": false
+}
+```
+
+### Duplicate Submission (200 OK)
+
+When the same `submission_id` is submitted again and the driver pod already exists, the service returns the existing pod details without creating a new one.
+
+```json
+{
+  "submission_id": "my-correlation-id-123",
+  "app_name": "my-spark-job",
+  "message": "Driver pod already exists for this submission",
+  "submitted_at": "2026-02-04T22:44:05.456Z",
+  "spark_app_id": "spark-b992db7da52c42298736dcbb3c9142be",
+  "driver_pod_name": "my-spark-job-cff6459c2aa9538c-driver",
+  "driver_pod_uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "namespace": "spark-jobs",
+  "duplicate_submission": true
 }
 ```
 
@@ -228,7 +247,7 @@ Same response format. No K8s resources are created — validates RBAC, schema, q
 | 400 | `INVALID_SPARK_SUBMIT_ARGS` | Invalid spark-submit arguments |
 | 405 | `METHOD_NOT_ALLOWED` | Non-POST request to /spark-submit |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type is not application/json |
-| 422 | `DRIVER_POD_ALREADY_EXISTS` | Pod name conflict (K8s 409) |
+| 409 | `DRIVER_POD_ALREADY_EXISTS` | Pod name conflict with a different submission |
 | 422 | `INVALID_POD_TEMPLATE` | K8s rejected pod template (K8s 422) |
 | 500 | `INTERNAL_SERVER_ERROR` | Unexpected failures (K8s 401, 403, 5xx) |
 | 503 | `SUBMITTER_OVERLOADED` | Transient errors (K8s 429, network timeouts) |
