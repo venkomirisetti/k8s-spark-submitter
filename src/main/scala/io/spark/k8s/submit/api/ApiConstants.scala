@@ -6,8 +6,11 @@ object HttpStatus {
   val Created = 201
   val BadRequest = 400
   val Unauthorized = 401
+  val Forbidden = 403
+  val NotFound = 404
   val MethodNotAllowed = 405
   val UnsupportedMediaType = 415
+  val Conflict = 409
   val UnprocessableEntity = 422
   val TooManyRequests = 429
   val InternalServerError = 500
@@ -35,18 +38,22 @@ object MediaType {
 /** Error code strings for API responses. */
 object ErrorCode {
   val BadRequest = "BAD_REQUEST"
-  val SubmissionFailed = "SUBMISSION_FAILED"
   val UnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
+  val InvalidSparkSubmitArgs = "INVALID_SPARK_SUBMIT_ARGS"
+  val MethodNotAllowed = "METHOD_NOT_ALLOWED"
+  val InvalidPodTemplate = "INVALID_POD_TEMPLATE"
+  val DriverPodAlreadyExists = "DRIVER_POD_ALREADY_EXISTS"
+  val SubmitterOverloaded = "SUBMITTER_OVERLOADED"
   val InternalError = "INTERNAL_SERVER_ERROR"
-  val ServiceUnavailable = "SERVICE_UNAVAILABLE"
+
 }
 
 /** User-facing API response messages. */
 object Messages {
   final val SubmitSuccess = "Spark driver pod created successfully"
+  final val DuplicateSubmission = "Driver pod already exists for this submission"
   final val MalformedRequest = "Malformed request body"
-  final val InvalidJobConfig = "Invalid job configuration"
   final val ContentTypeMustBeJson = "Content-Type must be application/json"
   final val UnexpectedError = "An unexpected error occurred"
-  final val CannotCreateTemplateDir = "Cannot create template directory"
 }
+

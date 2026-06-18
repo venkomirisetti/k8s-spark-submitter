@@ -1,9 +1,10 @@
 package io.spark.k8s.submit.service
 
 import io.spark.k8s.submit.SparkSubmitException
+import io.spark.k8s.submit.api.ErrorCode
 import io.spark.k8s.submit.model.SparkSubmitRequest
 import io.spark.k8s.submit.util.PodTemplateUtils
-import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.{KubernetesClient, KubernetesClientException}
 import org.mockito.Mockito
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -133,14 +134,14 @@ class SparkSubmitterTest extends AnyFlatSpec
   private def submitExpectingValidationError(request: SparkSubmitRequest): SparkSubmitException = {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(request) }
-    ex.isValidationError shouldBe true
+    ex.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
     ex
   }
 
   private def submitExpectingSubmissionError(request: SparkSubmitRequest): SparkSubmitException = {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(request) }
-    ex.isValidationError shouldBe false
+    ex.errorCode should not be ErrorCode.InvalidSparkSubmitArgs
     ex
   }
 
@@ -187,7 +188,7 @@ class SparkSubmitterTest extends AnyFlatSpec
   it should "accept Array[String] arguments via overload" in {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(Array(InvalidArgKey, InvalidArgValue)) }
-    ex.isValidationError shouldBe true
+    ex.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
   }
 
   it should "require valid master URL" in {
@@ -209,8 +210,8 @@ class SparkSubmitterTest extends AnyFlatSpec
       ))
 
     val exception = intercept[SparkSubmitException] { createMockSubmitter().submitJob(request) }
-    exception.isValidationError shouldBe true
-    exception.getDetails should include("cluster")
+    exception.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
+    exception.getMessage should include("cluster")
   }
 
   it should "reject client deploy mode passed via --conf" in {
@@ -224,8 +225,8 @@ class SparkSubmitterTest extends AnyFlatSpec
       ))
 
     val exception = intercept[SparkSubmitException] { createMockSubmitter().submitJob(request) }
-    exception.isValidationError shouldBe true
-    exception.getDetails should include("cluster")
+    exception.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
+    exception.getMessage should include("cluster")
   }
 
   it should "handle null driver template and null executor template" in {
@@ -244,19 +245,19 @@ class SparkSubmitterTest extends AnyFlatSpec
   it should "handle invalid JSON in driver template" in {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(sparkSubmitArgs = validArgs, driverPodTemplate = InvalidJson)) }
-    ex should not be null
+    ex.errorCode shouldBe ErrorCode.InternalError
   }
 
   it should "handle invalid JSON in executor template" in {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(sparkSubmitArgs = validArgs, executorPodTemplate = InvalidJsonArray)) }
-    ex should not be null
+    ex.errorCode shouldBe ErrorCode.InternalError
   }
 
   it should "handle both driver and executor templates with valid JSON" in {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(sparkSubmitArgs = validArgs, driverPodTemplate = DriverTemplateJson, executorPodTemplate = ExecutorTemplateJson)) }
-    ex should not be null
+    ex.errorCode shouldBe ErrorCode.InternalError
   }
 
   it should "generate unique template directories for concurrent submissions" in {
@@ -348,13 +349,13 @@ class SparkSubmitterTest extends AnyFlatSpec
     val submitter = createMockSubmitter()
     val largeTemplate = s"""{"metadata":{"labels":{"k":"${"x" * 10000}"}}}"""
     val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(sparkSubmitArgs = validArgs, driverPodTemplate = largeTemplate)) }
-    ex should not be null
+    ex.errorCode shouldBe ErrorCode.InternalError
   }
 
   it should "handle unicode characters in templates" in {
     val submitter = createMockSubmitter()
     val ex = intercept[SparkSubmitException] { submitter.submitJob(SparkSubmitRequest(sparkSubmitArgs = validArgs, driverPodTemplate = """{"metadata":{"labels":{"e":"H"}}}""")) }
-    ex should not be null
+    ex.errorCode shouldBe ErrorCode.InternalError
   }
 
   it should "handle special characters in app name" in {
@@ -388,110 +389,139 @@ class SparkSubmitterTest extends AnyFlatSpec
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(request, dryRun = true)
     }
-    exception.isValidationError shouldBe true
+    exception.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
 
     val countAfter = if (baseDir.exists()) baseDir.listFiles().count(_.isDirectory) else ZeroCount
     countAfter shouldBe countBefore
   }
 
   // ==========================================================================
-  // RETRY CLASSIFICATION TESTS
+  // ERROR CODE CLASSIFICATION TESTS
   // ==========================================================================
-  // Verify that SparkSubmitter correctly classifies K8s failures as retryable (transient)
-  // vs terminal, which drives the operator's circuit-breaker behavior.
+  // Verify that SparkSubmitter correctly maps K8s failures to structured error codes.
   // ==========================================================================
 
-  "SparkSubmitter retry classification" should "classify K8s 401 Unauthorized as retryable" in {
+  "SparkSubmitter error code classification" should "map K8s 401 Unauthorized to INTERNAL_SERVER_ERROR" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("unauthorized", 401, null))
+      new KubernetesClientException("unauthorized", 401, null))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe true
+    exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "classify K8s 429 Too Many Requests as retryable" in {
+  it should "map K8s 429 Too Many Requests to SUBMITTER_OVERLOADED" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("rate limited", 429, null))
+      new KubernetesClientException("rate limited", 429, null))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe true
+    exception.errorCode shouldBe ErrorCode.SubmitterOverloaded
   }
 
-  it should "classify K8s 500 Internal Server Error as retryable" in {
+  it should "map K8s 500 Internal Server Error to INTERNAL_SERVER_ERROR" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("server error", 500, null))
+      new KubernetesClientException("server error", 500, null))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe true
+    exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "classify K8s 503 Service Unavailable as retryable" in {
+  it should "map K8s 503 Service Unavailable to INTERNAL_SERVER_ERROR" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("unavailable", 503, null))
+      new KubernetesClientException("unavailable", 503, null))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe true
+    exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "classify K8s 403 Forbidden as terminal (not retryable)" in {
+  it should "map K8s 403 Forbidden to INTERNAL_SERVER_ERROR" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("forbidden", 403, null))
+      new KubernetesClientException("forbidden", 403, null))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe false
-    exception.isValidationError shouldBe false
+    exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "classify K8s 409 Conflict as terminal" in {
-    val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("conflict", 409, null))
+  it should "return duplicate submission on K8s 409 when same submission-id exists" in {
+    val submitter = createSubmitterWithConflictAndExistingPod(sameSubmissionId = true)
+    val request = validRequestWithSubmissionId("sub-123")
+
+    val response = submitter.submitJob(request)
+
+    response.duplicateSubmission shouldBe true
+    response.submissionId shouldBe "sub-123"
+    response.driverPodName shouldBe "existing-driver"
+  }
+
+  it should "throw DRIVER_POD_ALREADY_EXISTS on K8s 409 when different submission-id" in {
+    val submitter = createSubmitterWithConflictAndExistingPod(sameSubmissionId = false)
+    val request = validRequestWithSubmissionId("sub-123")
 
     val exception = intercept[SparkSubmitException] {
-      submitter.submitJob(validRequest)
+      submitter.submitJob(request)
     }
-    exception.isTransient shouldBe false
+    exception.errorCode shouldBe ErrorCode.DriverPodAlreadyExists
   }
 
-  it should "classify K8s exception with no HTTP code (network error) as terminal" in {
+
+  it should "map K8s exception with no HTTP code (network error) to SUBMISSION_FAILED" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("connection refused",
+      new KubernetesClientException("connection refused",
         new java.net.ConnectException("connection refused")))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe false
+    exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "classify unknown RuntimeException as terminal" in {
+  it should "map unknown RuntimeException to SUBMISSION_FAILED" in {
     val submitter = createSubmitterWithThrowingClient(
       new RuntimeException("unexpected"))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.isTransient shouldBe false
+    exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "preserve classification semantics in dry-run mode" in {
+  it should "map K8s 422 Unprocessable Entity to INVALID_POD_TEMPLATE" in {
     val submitter = createSubmitterWithThrowingClient(
-      new io.fabric8.kubernetes.client.KubernetesClientException("unavailable", 503, null))
+      new KubernetesClientException("invalid pod spec", 422, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.errorCode shouldBe ErrorCode.InvalidPodTemplate
+  }
+
+  it should "map K8s 404 Not Found to INVALID_SPARK_SUBMIT_ARGS" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new KubernetesClientException("not found", 404, null))
+
+    val exception = intercept[SparkSubmitException] {
+      submitter.submitJob(validRequest)
+    }
+    exception.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
+  }
+
+  it should "preserve error code classification in dry-run mode" in {
+    val submitter = createSubmitterWithThrowingClient(
+      new KubernetesClientException("unavailable", 503, null))
 
     val dryRunException = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest, dryRun = true)
     }
-    dryRunException.isTransient shouldBe true
-    dryRunException.isValidationError shouldBe false
+    dryRunException.errorCode shouldBe ErrorCode.InternalError
   }
 
   private def validRequest = SparkSubmitRequest(sparkSubmitArgs = JavaArrays.asList(
@@ -501,6 +531,65 @@ class SparkSubmitterTest extends AnyFlatSpec
     ConfArg, s"$ImageConfKey=$SparkImage",
     LocalJar
   ))
+
+  private def validRequestWithSubmissionId(submissionId: String) = SparkSubmitRequest(
+    sparkSubmitArgs = JavaArrays.asList(
+      MasterArg, DefaultK8sMaster, DeployModeArg, "cluster",
+      ClassArg, SparkPiClass,
+      ConfArg, s"$NamespaceConfKey=$DefaultNamespace",
+      ConfArg, s"$ImageConfKey=$SparkImage",
+      LocalJar
+    ),
+    submissionId = submissionId
+  )
+
+  private def createSubmitterWithConflictAndExistingPod(sameSubmissionId: Boolean): SparkSubmitter = {
+    import org.mockito.ArgumentMatchers.{any, anyBoolean}
+    import org.mockito.Mockito.RETURNS_DEEP_STUBS
+    import io.fabric8.kubernetes.api.model.{ObjectMeta, Pod, PodList}
+    import io.fabric8.kubernetes.client.dsl.{MixedOperation, NonNamespaceOperation, PodResource}
+
+    val mockClient = Mockito.mock(classOf[KubernetesClient])
+    val podOps = Mockito.mock(classOf[MixedOperation[Pod, PodList, PodResource]], RETURNS_DEEP_STUBS)
+    val namespacedPodOps = Mockito.mock(classOf[NonNamespaceOperation[Pod, PodList, PodResource]], RETURNS_DEEP_STUBS)
+    val podResource = Mockito.mock(classOf[PodResource])
+
+    Mockito.when(mockClient.pods()).thenReturn(podOps)
+    Mockito.when(podOps.inNamespace(any())).thenReturn(namespacedPodOps)
+    Mockito.when(namespacedPodOps.resource(any[Pod])).thenReturn(podResource)
+    Mockito.when(podResource.dryRun(anyBoolean())).thenReturn(podResource)
+    Mockito.when(podResource.create()).thenThrow(new KubernetesClientException("conflict", 409, null))
+
+    // Mock label-based pod lookup for handleConflict
+    val podList = if (sameSubmissionId) {
+      val existingPod = new Pod()
+      val meta = new ObjectMeta()
+      meta.setName("existing-driver")
+      meta.setUid("uid-123")
+      val labels = new java.util.HashMap[String, String]()
+      labels.put("spark-app-selector", "spark-app-123")
+      meta.setLabels(labels)
+      existingPod.setMetadata(meta)
+      val pl = new PodList()
+      pl.setItems(java.util.Collections.singletonList(existingPod))
+      pl
+    } else {
+      val pl = new PodList()
+      pl.setItems(java.util.Collections.emptyList())
+      pl
+    }
+    Mockito.when(namespacedPodOps.withLabel(any[String], any[String]).list()).thenReturn(podList)
+
+    val resourceListOps = Mockito.mock(classOf[io.fabric8.kubernetes.client.dsl.NamespaceListVisitFromServerGetDeleteRecreateWaitApplicable[io.fabric8.kubernetes.api.model.HasMetadata]])
+    Mockito.when(mockClient.resourceList(any[java.util.List[io.fabric8.kubernetes.api.model.HasMetadata]])).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.inNamespace(any())).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.dryRun(anyBoolean())).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.forceConflicts()).thenReturn(resourceListOps)
+    Mockito.when(resourceListOps.serverSideApply()).thenReturn(java.util.Collections.emptyList())
+
+    val k8sProvider = createMockK8sProvider(mockClient)
+    new SparkSubmitter(k8sProvider)
+  }
 
   private def createSubmitterWithThrowingClient(exception: Exception): SparkSubmitter = {
     import org.mockito.ArgumentMatchers.{any, anyBoolean}

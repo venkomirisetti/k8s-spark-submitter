@@ -1,7 +1,7 @@
 package io.spark.k8s.submit.api.servlet
 
 import io.spark.k8s.submit.SparkSubmitException
-import io.spark.k8s.submit.api.HttpStatus
+import io.spark.k8s.submit.api.{ErrorCode, HttpStatus}
 import io.spark.k8s.submit.model.{SparkSubmitRequest, SparkSubmitResponse}
 import io.spark.k8s.submit.service.SparkSubmitter
 import org.mockito.ArgumentMatchers.{any, anyBoolean}
@@ -33,8 +33,9 @@ class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestS
     verify(resp).setStatus(HttpStatus.Ok)
   }
 
-  it should "return 400 for validation errors" in {
-    val submitter = mockSubmitterThrowing(SparkSubmitException.validation("a", "b"))
+  it should "return 400 for invalid spark-submit args" in {
+    val submitter = mockSubmitterThrowing(
+      SparkSubmitException.of(ErrorCode.InvalidSparkSubmitArgs, "bad args"))
     val (req, resp, _) = mockPostRequest(validJson)
 
     new SparkSubmitServlet(submitter).doPost(req, resp)
@@ -42,22 +43,24 @@ class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestS
     verify(resp).setStatus(HttpStatus.BadRequest)
   }
 
-  it should "return 422 for submission errors" in {
-    val submitter = mockSubmitterThrowing(SparkSubmitException.submission("a", "b"))
-    val (req, resp, _) = mockPostRequest(validJson)
-
-    new SparkSubmitServlet(submitter).doPost(req, resp)
-
-    verify(resp).setStatus(HttpStatus.UnprocessableEntity)
-  }
-
   it should "return 503 for transient errors" in {
-    val submitter = mockSubmitterThrowing(SparkSubmitException.retryable("a", "b"))
+    val submitter = mockSubmitterThrowing(
+      SparkSubmitException.of(ErrorCode.SubmitterOverloaded, "rate limited"))
     val (req, resp, _) = mockPostRequest(validJson)
 
     new SparkSubmitServlet(submitter).doPost(req, resp)
 
     verify(resp).setStatus(HttpStatus.ServiceUnavailable)
+  }
+
+  it should "return 409 for driver pod already exists" in {
+    val submitter = mockSubmitterThrowing(
+      SparkSubmitException.of(ErrorCode.DriverPodAlreadyExists, "pod exists"))
+    val (req, resp, _) = mockPostRequest(validJson)
+
+    new SparkSubmitServlet(submitter).doPost(req, resp)
+
+    verify(resp).setStatus(HttpStatus.Conflict)
   }
 
   it should "return 415 for wrong Content-Type" in {
@@ -85,6 +88,26 @@ class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestS
     new SparkSubmitServlet(submitter).doPost(req, resp)
 
     verify(resp).setStatus(HttpStatus.BadRequest)
+  }
+
+  it should "return 500 for internal server errors" in {
+    val submitter = mockSubmitterThrowing(
+      SparkSubmitException.of(ErrorCode.InternalError, "internal error"))
+    val (req, resp, _) = mockPostRequest(validJson)
+
+    new SparkSubmitServlet(submitter).doPost(req, resp)
+
+    verify(resp).setStatus(HttpStatus.InternalServerError)
+  }
+
+  it should "return 422 for invalid pod template" in {
+    val submitter = mockSubmitterThrowing(
+      SparkSubmitException.of(ErrorCode.InvalidPodTemplate, "invalid template"))
+    val (req, resp, _) = mockPostRequest(validJson)
+
+    new SparkSubmitServlet(submitter).doPost(req, resp)
+
+    verify(resp).setStatus(HttpStatus.UnprocessableEntity)
   }
 
   it should "reject GET requests with 405 and usage message" in {

@@ -1,6 +1,7 @@
 package org.apache.spark.deploy
 
 import io.spark.k8s.submit.{SparkConstants, SparkSubmitException}
+import io.spark.k8s.submit.api.ErrorCode
 import org.apache.spark.deploy.k8s.submit.{JavaMainAppResource, PythonMainAppResource, RMainAppResource}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -148,8 +149,8 @@ class K8sSparkSubmitArgsParserTest extends AnyFlatSpec with Matchers {
     val exception = intercept[SparkSubmitException] {
       K8sSparkSubmitArgsParser.parseArgs(args)
     }
-    exception.isValidationError shouldBe true
-    exception.getDetails should include(ClusterMode)
+    exception.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
+    exception.getMessage should include(ClusterMode)
   }
 
   it should "reject client deploy mode passed via --conf" in {
@@ -164,8 +165,8 @@ class K8sSparkSubmitArgsParserTest extends AnyFlatSpec with Matchers {
     val exception = intercept[SparkSubmitException] {
       K8sSparkSubmitArgsParser.parseArgs(args)
     }
-    exception.isValidationError shouldBe true
-    exception.getDetails should include(ClusterMode)
+    exception.errorCode shouldBe ErrorCode.InvalidSparkSubmitArgs
+    exception.getMessage should include(ClusterMode)
   }
 
   // ========== Python/R mainClass resolution ==========
