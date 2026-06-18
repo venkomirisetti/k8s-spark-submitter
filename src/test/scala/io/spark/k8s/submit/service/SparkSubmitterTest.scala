@@ -451,13 +451,13 @@ class SparkSubmitterTest extends AnyFlatSpec
     exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "return idempotent replay on K8s 409 when same submission-id exists" in {
+  it should "return duplicate submission on K8s 409 when same submission-id exists" in {
     val submitter = createSubmitterWithConflictAndExistingPod(sameSubmissionId = true)
     val request = validRequestWithSubmissionId("sub-123")
 
     val response = submitter.submitJob(request)
 
-    response.idempotentReplay shouldBe true
+    response.duplicateSubmission shouldBe true
     response.submissionId shouldBe "sub-123"
     response.driverPodName shouldBe "existing-driver"
   }

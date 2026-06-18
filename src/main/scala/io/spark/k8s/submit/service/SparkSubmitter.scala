@@ -24,7 +24,7 @@ import java.util.{Arrays => JavaArrays}
  * - Parses spark-submit CLI arguments via [[K8sSparkSubmitArgsParser]]
  * - Manages pod templates (driver/executor) as temp files for K8s submission
  * - Delegates K8s resource creation to [[K8sSparkClient]]
- * - Handles idempotent replay on K8s 409 Conflict (same submission-id → return existing pod)
+ * - Handles duplicate submission on K8s 409 Conflict (same submission-id → return existing pod)
  * - Maps K8s client exceptions to [[SparkSubmitException]] with structured error codes (see [[resolveErrorCode]])
  *
  * Supports dry-run mode (?dryRun=true) for K8s server-side validation without persisting resources.
@@ -44,7 +44,7 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
     val appName = conf.get(SparkConstants.AppName)
     log.debug(s"Submitting: app=$appName, ns=${conf.get(K8sNamespaceKey, K8sNamespaceDefault)}, dryRun=$dryRun")
 
-    // Tag driver pod with submission-id for idempotent replay detection
+    // Tag driver pod with submission-id for duplicate submission detection
     conf.set(SparkConstants.SubmissionIdLabelConfKey, request.submissionId)
 
     val templateDirOpt = createPodTemplates(request, request.submissionId, conf)
@@ -62,7 +62,7 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
 
   /**
    * Handles K8s 409 Conflict by checking if the existing pod belongs to the same submission.
-   * Same submission-id → idempotent replay (return existing pod details).
+   * Same submission-id → duplicate submission (return existing pod details).
    * Different submission-id or missing label → genuine conflict (throw error).
    */
   private def handleConflict(request: SparkSubmitRequest, conf: SparkConf, appName: String): SparkSubmitResponse = {
@@ -78,9 +78,9 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
 
     val sparkAppId = existingPod.getMetadata.getLabels.get(SparkConstants.SparkAppSelectorLabel)
 
-    log.info(s"${LogPrefix.Success} Idempotent replay: submissionId=$submissionId, pod=${existingPod.getMetadata.getName}")
+    log.info(s"${LogPrefix.Success} Duplicate submission: submissionId=$submissionId, pod=${existingPod.getMetadata.getName}")
 
-    SparkSubmitResponse.idempotentReplay(
+    SparkSubmitResponse.duplicateSubmission(
       submissionId, appName, sparkAppId,
       existingPod.getMetadata.getName,
       existingPod.getMetadata.getUid,

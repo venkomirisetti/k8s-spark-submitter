@@ -51,7 +51,7 @@ object ErrorCode {
 /** User-facing API response messages. */
 object Messages {
   final val SubmitSuccess = "Spark driver pod created successfully"
-  final val IdempotentReplay = "Driver pod already exists for this submission"
+  final val DuplicateSubmission = "Driver pod already exists for this submission"
   final val MalformedRequest = "Malformed request body"
   final val ContentTypeMustBeJson = "Content-Type must be application/json"
   final val UnexpectedError = "An unexpected error occurred"

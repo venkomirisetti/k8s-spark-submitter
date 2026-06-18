@@ -17,13 +17,13 @@ case class SparkSubmitResponse(
     @JsonProperty("driver_pod_name") @BeanProperty driverPodName: String,
     @JsonProperty("driver_pod_uid") @BeanProperty driverPodUid: String,
     @JsonProperty("namespace") @BeanProperty namespace: String,
-    @JsonProperty("idempotent_replay") @BeanProperty idempotentReplay: Boolean = false
+    @JsonProperty("duplicate_submission") @BeanProperty duplicateSubmission: Boolean = false
 )
 
 object SparkSubmitResponse {
   def success(submissionId: String, appName: String, sparkAppId: String, driverPodName: String, driverPodUid: String, namespace: String): SparkSubmitResponse =
     SparkSubmitResponse(submissionId, appName, Messages.SubmitSuccess, Instant.now.toString, sparkAppId, driverPodName, driverPodUid, namespace)
 
-  def idempotentReplay(submissionId: String, appName: String, sparkAppId: String, driverPodName: String, driverPodUid: String, namespace: String): SparkSubmitResponse =
-    SparkSubmitResponse(submissionId, appName, Messages.IdempotentReplay, Instant.now.toString, sparkAppId, driverPodName, driverPodUid, namespace, idempotentReplay = true)
+  def duplicateSubmission(submissionId: String, appName: String, sparkAppId: String, driverPodName: String, driverPodUid: String, namespace: String): SparkSubmitResponse =
+    SparkSubmitResponse(submissionId, appName, Messages.DuplicateSubmission, Instant.now.toString, sparkAppId, driverPodName, driverPodUid, namespace, duplicateSubmission = true)
 }

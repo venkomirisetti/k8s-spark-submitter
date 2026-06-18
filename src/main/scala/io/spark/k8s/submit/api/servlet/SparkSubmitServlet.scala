@@ -44,7 +44,7 @@ class SparkSubmitServlet(sparkSubmitter: SparkSubmitter) extends HttpServlet wit
         if (dryRun) log.info(s"${LogPrefix.Success} dryrun validation passed appName=${response.appName}")
         else logSubmissionSuccess(response)
 
-        val status = if (dryRun || response.idempotentReplay) HttpStatus.Ok else HttpStatus.Created
+        val status = if (dryRun || response.duplicateSubmission) HttpStatus.Ok else HttpStatus.Created
         sendJson(resp, status, response)
       } match {
         case Success(_) => // Already handled
