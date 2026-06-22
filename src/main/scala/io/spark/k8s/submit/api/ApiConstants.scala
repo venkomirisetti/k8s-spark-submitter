@@ -17,10 +17,15 @@ object HttpStatus {
   val ServiceUnavailable = 503
 }
 
-/** API endpoint paths. */
+/** Versioned API endpoint paths. */
 object ApiPaths {
   val Base = "/api/v1"
   val SparkSubmit = "/spark-submit"
+}
+
+/** Infrastructure endpoint paths (unversioned, probe port). */
+object ManagementPaths {
+  val Base = "/"
   val Metrics = "/metrics"
   val Health = "/healthz"
 }

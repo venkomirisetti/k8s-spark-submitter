@@ -1,6 +1,6 @@
 package io.spark.k8s.submit
 
-import io.spark.k8s.submit.api.ApiPaths
+import io.spark.k8s.submit.api.{ApiPaths, ManagementPaths}
 import io.spark.k8s.submit.api.servlet.{HealthServlet, MetricsServlet, SparkSubmitServlet}
 import io.spark.k8s.submit.metrics.{SparkSubmitMetrics, SparkSubmitMetricsFilter}
 import io.spark.k8s.submit.service.{KubernetesClientProvider, SparkSubmitter}
@@ -177,11 +177,11 @@ object SparkSubmitServer {
 
   private def createProbeContext(metrics: SparkSubmitMetrics): ServletContextHandler = {
     val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
-    context.setContextPath(ApiPaths.Base)
+    context.setContextPath(ManagementPaths.Base)
     context.setVirtualHosts(Array("@probes"))
 
-    context.addServlet(new ServletHolder(new MetricsServlet(metrics)), ApiPaths.Metrics)
-    context.addServlet(new ServletHolder(new HealthServlet), ApiPaths.Health)
+    context.addServlet(new ServletHolder(new MetricsServlet(metrics)), ManagementPaths.Metrics)
+    context.addServlet(new ServletHolder(new HealthServlet), ManagementPaths.Health)
     context
   }
 }
