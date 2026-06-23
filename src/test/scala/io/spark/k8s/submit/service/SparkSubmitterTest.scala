@@ -494,14 +494,14 @@ class SparkSubmitterTest extends AnyFlatSpec
     exception.errorCode shouldBe ErrorCode.InternalError
   }
 
-  it should "map K8s 422 Unprocessable Entity to INVALID_POD_TEMPLATE" in {
+  it should "map K8s 422 Unprocessable Entity to SUBMISSION_FAILED" in {
     val submitter = createSubmitterWithThrowingClient(
-      new KubernetesClientException("invalid pod spec", 422, null))
+      new KubernetesClientException("exceeded quota", 422, null))
 
     val exception = intercept[SparkSubmitException] {
       submitter.submitJob(validRequest)
     }
-    exception.errorCode shouldBe ErrorCode.InvalidPodTemplate
+    exception.errorCode shouldBe ErrorCode.SubmissionFailed
   }
 
   it should "map K8s 404 Not Found to INVALID_SPARK_SUBMIT_ARGS" in {

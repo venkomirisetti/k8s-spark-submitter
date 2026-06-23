@@ -71,7 +71,7 @@ trait ErrorSupport {
     case ErrorCode.UnsupportedMediaType => HttpStatus.UnsupportedMediaType
     case ErrorCode.MethodNotAllowed => HttpStatus.MethodNotAllowed
     case ErrorCode.DriverPodAlreadyExists => HttpStatus.Conflict
-    case ErrorCode.InvalidPodTemplate => HttpStatus.UnprocessableEntity
+    case ErrorCode.SubmissionFailed => HttpStatus.UnprocessableEntity
     case ErrorCode.SubmitterOverloaded => HttpStatus.ServiceUnavailable
     case _ => HttpStatus.InternalServerError
   }

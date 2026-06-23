@@ -135,7 +135,7 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
    * K8s 429 TooManyRequests            SUBMITTER_OVERLOADED
    * K8s 401, 403, 5xx (cluster errors) INTERNAL_SERVER_ERROR
    * K8s 404 Not Found                  INVALID_SPARK_SUBMIT_ARGS
-   * K8s 422 Unprocessable              INVALID_POD_TEMPLATE
+   * K8s 422 Unprocessable              SUBMISSION_FAILED
    * Other K8s errors                   INTERNAL_SERVER_ERROR
    * IOException (network/transient)    SUBMITTER_OVERLOADED
    * Unknown                            INTERNAL_SERVER_ERROR
@@ -150,7 +150,7 @@ class SparkSubmitter(k8sProvider: KubernetesClientProvider) {
       ErrorCode.InternalError
     case k: KubernetesClientException => k.getCode match {
       case HttpStatus.NotFound            => ErrorCode.InvalidSparkSubmitArgs
-      case HttpStatus.UnprocessableEntity => ErrorCode.InvalidPodTemplate
+      case HttpStatus.UnprocessableEntity => ErrorCode.SubmissionFailed
       case _                              => ErrorCode.InternalError
     }
     case _ =>

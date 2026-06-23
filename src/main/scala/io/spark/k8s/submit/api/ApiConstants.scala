@@ -46,7 +46,7 @@ object ErrorCode {
   val UnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
   val InvalidSparkSubmitArgs = "INVALID_SPARK_SUBMIT_ARGS"
   val MethodNotAllowed = "METHOD_NOT_ALLOWED"
-  val InvalidPodTemplate = "INVALID_POD_TEMPLATE"
+  val SubmissionFailed = "SUBMISSION_FAILED"
   val DriverPodAlreadyExists = "DRIVER_POD_ALREADY_EXISTS"
   val SubmitterOverloaded = "SUBMITTER_OVERLOADED"
   val InternalError = "INTERNAL_SERVER_ERROR"

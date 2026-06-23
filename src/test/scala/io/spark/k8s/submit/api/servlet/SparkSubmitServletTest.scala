@@ -100,9 +100,9 @@ class SparkSubmitServletTest extends AnyFlatSpec with Matchers with ServletTestS
     verify(resp).setStatus(HttpStatus.InternalServerError)
   }
 
-  it should "return 422 for invalid pod template" in {
+  it should "return 422 for submission failed" in {
     val submitter = mockSubmitterThrowing(
-      SparkSubmitException.of(ErrorCode.InvalidPodTemplate, "invalid template"))
+      SparkSubmitException.of(ErrorCode.SubmissionFailed, "exceeded quota"))
     val (req, resp, _) = mockPostRequest(validJson)
 
     new SparkSubmitServlet(submitter).doPost(req, resp)
