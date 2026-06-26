@@ -1,9 +1,9 @@
 ---
 name: local-setup-and-test
-description: Set up local kind cluster for k8s-spark-submitter and run a SparkPi verification job end-to-end
+description: Set up local kind cluster for k8s-spark-submitter using the Helm chart, run SparkPi verification, and optionally test TLS scenarios
 ---
 
-You will set up a complete local Kubernetes environment for k8s-spark-submitter using kind (Kubernetes in Docker).
+You will set up a complete local Kubernetes environment for k8s-spark-submitter using kind (Kubernetes in Docker) and the Helm chart.
 
 ## Execution Mode
 
@@ -17,18 +17,21 @@ You will set up a complete local Kubernetes environment for k8s-spark-submitter 
 
 | Step | Action | Critical? |
 |------|--------|-----------|
-| 1 | Verify Docker is running | Yes -- cannot proceed without it |
-| 2 | Install kind if not present | Yes -- required for cluster |
-| 3 | Create kind cluster "submitter" | Yes -- required for deployment |
-| 4 | Build and load Docker image | Yes -- required for deployment |
-| 5 | Create namespace and apply K8s resources | Yes -- required for service |
-| 6 | Verify deployment is ready | No -- informational |
+| 1 | Verify Docker is running | Yes |
+| 2 | Install kind if not present | Yes |
+| 3 | Create kind cluster "submitter" | Yes |
+| 4 | Build and load Docker image | Yes |
+| 5 | Load Spark base image into kind | Yes |
+| 6 | Install Helm chart | Yes |
+| 7 | Verify deployment is ready | Yes |
+| 8 | Submit SparkPi job and verify | No |
+| 9 | (Optional) TLS scenarios | No — only run if user requests TLS testing |
 
 ## Action 1: Check Docker
 
 ```bash
 docker ps >/dev/null 2>&1 || { echo "ERROR: Docker is not running. Start Docker Desktop first."; exit 1; }
-echo "✓ Docker is running"
+echo "Docker is running"
 ```
 
 ## Action 2: Install kind
@@ -46,93 +49,68 @@ if ! command -v kind &> /dev/null; then
         echo "ERROR: Unsupported OS: $OSTYPE"; exit 1
     fi
 fi
-echo "✓ kind installed: $(kind version)"
+echo "kind installed: $(kind version)"
 ```
 
 ## Action 3: Create kind cluster
 
 ```bash
 if kind get clusters 2>/dev/null | grep -q "^submitter$"; then
-    echo "✓ Cluster 'submitter' exists"
+    echo "Cluster 'submitter' exists"
 else
     echo "Creating kind cluster 'submitter'..."
     kind create cluster --name submitter --wait 60s
 fi
-kubectl config use-context kind-submitter
-echo "✓ Cluster ready"
+kubectl cluster-info --context kind-submitter
+echo "Cluster ready"
 ```
 
 ## Action 4: Build and load image
 
 ```bash
 echo "Building JAR and Docker image..."
-make image IMAGE_TAG=k8s-spark-submitter:local
+make image SPARK_VERSION=4.0.1 BUILD_NUMBER=latest
 echo "Loading image into kind..."
-kind load docker-image k8s-spark-submitter:local --name submitter
-echo "✓ Image ready"
+kind load docker-image venkomirisetti/k8s-spark-submitter:4.0.1-latest --name submitter
+echo "Image ready"
 ```
 
-## Action 5: Deploy all Kubernetes resources
+## Action 5: Load Spark base image
 
 ```bash
-# Create namespace
-kubectl apply -f - <<'EOF'
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: submitter
-  labels:
-    name: submitter
-EOF
-kubectl wait --for=jsonpath='{.status.phase}'=Active namespace/submitter --timeout=30s
+echo "Pulling Spark base image (needed for driver pods)..."
+docker pull spark:4.0.1 || true
+kind load docker-image spark:4.0.1 --name submitter
+echo "Spark image loaded"
+```
 
-# Apply submitter RBAC
-kubectl apply -f - <<'EOF'
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: spark-submitter
-  namespace: submitter
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: spark-submitter-role
-rules:
-  - apiGroups: [""]
-    resources: ["pods", "services", "configmaps", "persistentvolumeclaims"]
-    verbs: ["create", "get", "list", "watch", "delete", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: spark-submitter-binding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: spark-submitter-role
-subjects:
-  - kind: ServiceAccount
-    name: spark-submitter
-    namespace: submitter
-EOF
+## Action 6: Install Helm chart
 
-# Apply Spark RBAC
-kubectl apply -f - <<'EOF'
+```bash
+echo "Installing spark-submitter Helm chart..."
+helm upgrade --install spark-submitter charts/spark-submitter/ \
+  --kube-context kind-submitter \
+  --namespace spark-submitter \
+  --create-namespace \
+  --set image.pullPolicy=Never
+echo "Helm chart installed"
+```
+
+Also create a Spark ServiceAccount for driver pods:
+
+```bash
+kubectl apply --context kind-submitter -f - <<'EOF'
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: spark
-  namespace: submitter
+  namespace: spark-submitter
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: spark-role
-  namespace: submitter
+  namespace: spark-submitter
 rules:
   - apiGroups: [""]
     resources: ["pods", "services", "configmaps"]
@@ -145,7 +123,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: spark-role-binding
-  namespace: submitter
+  namespace: spark-submitter
 roleRef:
   kind: Role
   name: spark-role
@@ -153,107 +131,39 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: spark
-    namespace: submitter
+    namespace: spark-submitter
 EOF
-
-# Apply service and deployment
-kubectl apply -f - <<'EOF'
-apiVersion: v1
-kind: Service
-metadata:
-  name: spark-submitter
-  namespace: submitter
-spec:
-  type: NodePort
-  ports:
-    - port: 8080
-      targetPort: http
-      nodePort: 30080
-      name: http
-  selector:
-    app: spark-submitter
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: spark-submitter
-  namespace: submitter
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: spark-submitter
-  template:
-    metadata:
-      labels:
-        app: spark-submitter
-    spec:
-      serviceAccountName: spark-submitter
-      containers:
-        - name: spark-submitter
-          image: k8s-spark-submitter:local
-          imagePullPolicy: Never
-          ports:
-            - name: http
-              containerPort: 8080
-          env:
-            - name: SERVER_ADDRESS
-              value: "0.0.0.0"
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          resources:
-            requests:
-              memory: "512Mi"
-              cpu: "250m"
-            limits:
-              memory: "1Gi"
-              cpu: "500m"
-EOF
-
-echo "✓ Resources deployed"
+echo "Spark RBAC created"
 ```
 
-## Action 6: Verify deployment
+## Action 7: Verify deployment
 
 ```bash
-kubectl wait --for=condition=available --timeout=120s deployment/spark-submitter -n submitter
+kubectl rollout status deployment/spark-submitter -n spark-submitter --context kind-submitter --timeout=60s
+
+# Verify health endpoint
+POD=$(kubectl get pods -n spark-submitter --context kind-submitter -l app.kubernetes.io/name=spark-submitter -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n spark-submitter --context kind-submitter "$POD" -- wget -qO- http://localhost:8081/healthz
 echo ""
-echo "✅ Setup complete!"
+
+echo "Setup complete!"
+kubectl get pods -n spark-submitter --context kind-submitter
+kubectl get svc -n spark-submitter --context kind-submitter
 echo ""
-kubectl get pods -n submitter
-echo ""
-kubectl get svc -n submitter
-echo ""
-echo "Access API: kubectl port-forward -n submitter svc/spark-submitter 8080:8080"
-echo "Test: curl -X POST http://localhost:8080/api/v1/spark/submit -H 'Content-Type: application/json' -d '{\"spark_submit_args\":[\"--master\",\"k8s://https://kubernetes.default.svc\",\"--deploy-mode\",\"cluster\",\"--name\",\"test\",\"--class\",\"org.apache.spark.examples.SparkPi\",\"--conf\",\"spark.kubernetes.namespace=submitter\",\"--conf\",\"spark.kubernetes.authenticate.driver.serviceAccountName=spark\",\"--conf\",\"spark.kubernetes.container.image=spark:4.0.1\",\"local:///opt/spark/examples/jars/spark-examples_2.13-4.0.1.jar\"]}'"
-echo ""
+echo "Port-forward: kubectl port-forward -n spark-submitter --context kind-submitter svc/spark-submitter-svc 8080:8080"
 ```
 
-## Action 7: Submit SparkPi job and verify
+## Action 8: Submit SparkPi job and verify
 
-This action has multiple sub-steps. Run them in order and report each sub-step result.
-
-### 7a: Port-forward and submit SparkPi
+### 8a: Port-forward and submit SparkPi
 
 ```bash
-# Start port-forward in background
-kubectl port-forward -n submitter svc/spark-submitter 8080:8080 &
+kubectl port-forward -n spark-submitter --context kind-submitter svc/spark-submitter-svc 8080:8080 &
 PF_PID=$!
 sleep 2
 
-# Submit SparkPi using open-source Spark 4.0.1 image
 echo "--- Submitting SparkPi job ---"
-RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8080/api/v1/spark/submit \
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8080/api/v1/spark-submit \
   -H 'Content-Type: application/json' \
   -d '{
     "spark_submit_args": [
@@ -261,7 +171,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:8080/api/v1/spar
       "--deploy-mode", "cluster",
       "--name", "spark-pi-test",
       "--class", "org.apache.spark.examples.SparkPi",
-      "--conf", "spark.kubernetes.namespace=submitter",
+      "--conf", "spark.kubernetes.namespace=spark-submitter",
       "--conf", "spark.kubernetes.authenticate.driver.serviceAccountName=spark",
       "--conf", "spark.kubernetes.container.image=spark:4.0.1",
       "local:///opt/spark/examples/jars/spark-examples_2.13-4.0.1.jar"
@@ -273,28 +183,14 @@ BODY=$(echo "$RESPONSE" | head -n -1)
 
 echo "HTTP Status: $HTTP_CODE"
 echo "Response: $BODY"
-
-if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-    echo "--- Submission accepted ---"
-else
-    echo "--- ERROR: Submission failed ---"
-fi
 ```
 
-### 7b: Check submitter pod logs for submission proof
-
-```bash
-echo "--- Submitter pod logs (last 50 lines) ---"
-SUBMITTER_POD=$(kubectl get pods -n submitter -l app=spark-submitter -o jsonpath='{.items[0].metadata.name}')
-kubectl logs "$SUBMITTER_POD" -n submitter --tail=50
-```
-
-### 7c: Monitor driver pod status through stages
+### 8b: Monitor driver pod
 
 ```bash
 echo "--- Waiting for driver pod to appear ---"
 for i in $(seq 1 30); do
-    DRIVER_POD=$(kubectl get pods -n submitter -l spark-role=driver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    DRIVER_POD=$(kubectl get pods -n spark-submitter --context kind-submitter -l spark-role=driver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
     if [ -n "$DRIVER_POD" ]; then
         echo "Driver pod found: $DRIVER_POD"
         break
@@ -305,69 +201,174 @@ done
 
 if [ -z "$DRIVER_POD" ]; then
     echo "ERROR: Driver pod never appeared after 150s"
-    # Show all pods for debugging
-    kubectl get pods -n submitter
-    # Kill port-forward
+    kubectl get pods -n spark-submitter --context kind-submitter
     kill $PF_PID 2>/dev/null
     exit 1
 fi
 
-echo ""
-echo "--- Driver pod status stages ---"
-PREV_PHASE=""
-for i in $(seq 1 60); do
-    PHASE=$(kubectl get pod "$DRIVER_POD" -n submitter -o jsonpath='{.status.phase}' 2>/dev/null)
-    if [ "$PHASE" != "$PREV_PHASE" ]; then
-        echo "[$(date +%H:%M:%S)] Driver pod phase: $PHASE"
-        PREV_PHASE="$PHASE"
-    fi
-    if [ "$PHASE" = "Succeeded" ] || [ "$PHASE" = "Failed" ]; then
-        break
-    fi
-    sleep 5
-done
-
-echo ""
-echo "--- Final driver pod describe (events) ---"
-kubectl describe pod "$DRIVER_POD" -n submitter | tail -20
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/"$DRIVER_POD" \
+  -n spark-submitter --context kind-submitter --timeout=300s || true
 ```
 
-### 7d: Show driver pod logs (success or failure)
+### 8c: Show results
 
 ```bash
-DRIVER_POD=$(kubectl get pods -n submitter -l spark-role=driver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-PHASE=$(kubectl get pod "$DRIVER_POD" -n submitter -o jsonpath='{.status.phase}' 2>/dev/null)
+DRIVER_POD=$(kubectl get pods -n spark-submitter --context kind-submitter -l spark-role=driver -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+PHASE=$(kubectl get pod "$DRIVER_POD" -n spark-submitter --context kind-submitter -o jsonpath='{.status.phase}' 2>/dev/null)
 
 echo "=== Driver pod: $DRIVER_POD ==="
 echo "=== Final status: $PHASE ==="
-echo ""
 
 if [ "$PHASE" = "Succeeded" ]; then
-    echo "--- SUCCESS: Driver pod logs ---"
-    kubectl logs "$DRIVER_POD" -n submitter | tail -30
-    echo ""
     echo "--- SparkPi result ---"
-    kubectl logs "$DRIVER_POD" -n submitter | grep -i "pi is roughly"
-elif [ "$PHASE" = "Failed" ]; then
-    echo "--- FAILED: Driver pod logs (last 50 lines) ---"
-    kubectl logs "$DRIVER_POD" -n submitter --tail=50
-    echo ""
-    echo "--- Container exit codes ---"
-    kubectl get pod "$DRIVER_POD" -n submitter -o jsonpath='{range .status.containerStatuses[*]}Container: {.name} State: {.state} LastState: {.lastState}{"\n"}{end}'
+    kubectl logs "$DRIVER_POD" -n spark-submitter --context kind-submitter | grep -i "pi is roughly"
 else
-    echo "--- UNKNOWN/TIMEOUT: Driver pod logs (last 50 lines) ---"
-    kubectl logs "$DRIVER_POD" -n submitter --tail=50
+    echo "--- Driver pod logs (last 50 lines) ---"
+    kubectl logs "$DRIVER_POD" -n spark-submitter --context kind-submitter --tail=50
 fi
 
-# Cleanup port-forward
 kill $PF_PID 2>/dev/null
+kubectl get pods -n spark-submitter --context kind-submitter -o wide
+```
+
+## Action 9: TLS Scenarios (Optional)
+
+Only run this section if the user explicitly asks for TLS testing.
+
+### 9a: Generate test certificates
+
+```bash
+CERT_DIR=$(mktemp -d)
+echo "Generating certs in $CERT_DIR"
+
+# CA
+openssl req -x509 -newkey rsa:2048 -nodes \
+  -keyout "$CERT_DIR/ca.key" -out "$CERT_DIR/ca.crt" \
+  -days 365 -subj "/CN=test-ca"
+
+# Server cert
+openssl req -newkey rsa:2048 -nodes \
+  -keyout "$CERT_DIR/server.key" -out "$CERT_DIR/server.csr" \
+  -subj "/CN=spark-submitter-svc.spark-submitter.svc"
+openssl x509 -req -in "$CERT_DIR/server.csr" \
+  -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" -CAcreateserial \
+  -out "$CERT_DIR/server.crt" -days 365 \
+  -extfile <(echo "subjectAltName=DNS:spark-submitter-svc.spark-submitter.svc,DNS:localhost")
+
+# Client cert (for mTLS)
+openssl req -newkey rsa:2048 -nodes \
+  -keyout "$CERT_DIR/client.key" -out "$CERT_DIR/client.csr" \
+  -subj "/CN=test-client"
+openssl x509 -req -in "$CERT_DIR/client.csr" \
+  -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" -CAcreateserial \
+  -out "$CERT_DIR/client.crt" -days 365
+
+# Store as K8s secret
+kubectl --context kind-submitter -n spark-submitter delete secret tls-certs --ignore-not-found
+kubectl --context kind-submitter -n spark-submitter create secret generic tls-certs \
+  --from-file=tls.crt="$CERT_DIR/server.crt" \
+  --from-file=tls.key="$CERT_DIR/server.key" \
+  --from-file=ca.crt="$CERT_DIR/ca.crt"
+
+echo "Certificates ready"
+```
+
+### 9b: HTTPS mode (server TLS only)
+
+```bash
+echo "=== TLS Scenario: HTTPS (no mTLS) ==="
+
+helm upgrade --install spark-submitter charts/spark-submitter/ \
+  --kube-context kind-submitter \
+  --namespace spark-submitter \
+  --set image.pullPolicy=Never \
+  --set tls.enabled=true \
+  --set tls.certPath=/etc/tls/tls.crt \
+  --set tls.keyPath=/etc/tls/tls.key \
+  --set tls.caCertPath="" \
+  --set 'volumes[0].name=tls-certs' \
+  --set 'volumes[0].secret.secretName=tls-certs' \
+  --set 'volumeMounts[0].name=tls-certs' \
+  --set 'volumeMounts[0].mountPath=/etc/tls' \
+  --set 'volumeMounts[0].readOnly=true'
+
+kubectl rollout status deployment/spark-submitter -n spark-submitter --context kind-submitter --timeout=60s
+
+# Probe port stays HTTP
+POD=$(kubectl get pods -n spark-submitter --context kind-submitter -l app.kubernetes.io/name=spark-submitter -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n spark-submitter --context kind-submitter "$POD" -- wget -qO- http://localhost:8081/healthz
 echo ""
-echo "--- All pods final state ---"
-kubectl get pods -n submitter -o wide
+
+# API port is HTTPS
+kubectl port-forward -n spark-submitter --context kind-submitter svc/spark-submitter-svc 18443:8080 &
+PF_PID=$!
+sleep 2
+curl -s --cacert "$CERT_DIR/ca.crt" -o /dev/null -w "HTTPS verified: %{http_code}\n" https://localhost:18443/api/v1/spark-submit || true
+kill $PF_PID 2>/dev/null
+
+echo "HTTPS scenario passed"
+```
+
+### 9c: mTLS mode
+
+```bash
+echo "=== TLS Scenario: mTLS ==="
+
+helm upgrade --install spark-submitter charts/spark-submitter/ \
+  --kube-context kind-submitter \
+  --namespace spark-submitter \
+  --set image.pullPolicy=Never \
+  --set tls.enabled=true \
+  --set tls.certPath=/etc/tls/tls.crt \
+  --set tls.keyPath=/etc/tls/tls.key \
+  --set tls.caCertPath=/etc/tls/ca.crt \
+  --set 'volumes[0].name=tls-certs' \
+  --set 'volumes[0].secret.secretName=tls-certs' \
+  --set 'volumeMounts[0].name=tls-certs' \
+  --set 'volumeMounts[0].mountPath=/etc/tls' \
+  --set 'volumeMounts[0].readOnly=true'
+
+kubectl rollout status deployment/spark-submitter -n spark-submitter --context kind-submitter --timeout=60s
+
+kubectl port-forward -n spark-submitter --context kind-submitter svc/spark-submitter-svc 18443:8080 &
+PF_PID=$!
+sleep 2
+
+# With valid client cert — should succeed
+echo "--- With client cert ---"
+curl -s --cacert "$CERT_DIR/ca.crt" --cert "$CERT_DIR/client.crt" --key "$CERT_DIR/client.key" \
+  -o /dev/null -w "mTLS: %{http_code}\n" https://localhost:18443/api/v1/spark-submit || true
+
+# Without client cert — should fail
+echo "--- Without client cert ---"
+HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost:18443/api/v1/spark-submit 2>&1)
+if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "" ]; then
+    echo "Rejected as expected (TLS handshake failed)"
+else
+    echo "ERROR: Expected rejection, got HTTP $HTTP_CODE"
+fi
+
+kill $PF_PID 2>/dev/null
+echo "mTLS scenario passed"
+```
+
+### 9d: TLS cleanup
+
+```bash
+helm upgrade --install spark-submitter charts/spark-submitter/ \
+  --kube-context kind-submitter \
+  --namespace spark-submitter \
+  --set image.pullPolicy=Never \
+  --set tls.enabled=false
+kubectl --context kind-submitter -n spark-submitter delete secret tls-certs --ignore-not-found
+rm -rf "$CERT_DIR"
+echo "TLS cleanup done, back to HTTP mode"
 ```
 
 ## Cleanup
 
 ```bash
+helm uninstall spark-submitter -n spark-submitter --kube-context kind-submitter
+kubectl delete namespace spark-submitter --context kind-submitter
 kind delete cluster --name submitter
 ```

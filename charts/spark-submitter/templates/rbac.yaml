@@ -1,0 +1,75 @@
+{{- if .Values.rbac.create -}}
+{{- if or (not .Values.jobNamespaces) (has "" .Values.jobNamespaces) }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "spark-submitter.clusterRoleName" . }}
+  labels:
+    {{- include "spark-submitter.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+{{ include "spark-submitter.policyRules" . }}
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "spark-submitter.clusterRoleBindingName" . }}
+  labels:
+    {{- include "spark-submitter.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "spark-submitter.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "spark-submitter.clusterRoleName" . }}
+{{- else }}
+{{- range $jobNamespace := .Values.jobNamespaces }}
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "spark-submitter.roleName" $ }}
+  namespace: {{ $jobNamespace }}
+  labels:
+    {{- include "spark-submitter.labels" $ | nindent 4 }}
+  {{- with $.Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+{{ include "spark-submitter.policyRules" $ }}
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "spark-submitter.roleBindingName" $ }}
+  namespace: {{ $jobNamespace }}
+  labels:
+    {{- include "spark-submitter.labels" $ | nindent 4 }}
+  {{- with $.Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "spark-submitter.serviceAccountName" $ }}
+  namespace: {{ $.Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "spark-submitter.roleName" $ }}
+{{- end }}
+{{- end }}
+{{- end }}

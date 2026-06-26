@@ -1,0 +1,134 @@
+suite: Test submitter RBAC
+
+templates:
+  - templates/rbac.yaml
+
+release:
+  name: spark-submitter
+  namespace: spark-submitter
+
+tests:
+  - it: Should not render RBAC when create is false
+    set:
+      rbac:
+        create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: Should create ClusterRole when jobNamespaces is empty
+    set:
+      rbac:
+        create: true
+      jobNamespaces: []
+    documentIndex: 0
+    asserts:
+      - containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          name: spark-submitter
+
+  - it: Should create ClusterRoleBinding when jobNamespaces is empty
+    set:
+      rbac:
+        create: true
+      jobNamespaces: []
+    documentIndex: 1
+    asserts:
+      - containsDocument:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          name: spark-submitter
+
+  - it: Should produce 2 documents for cluster-wide RBAC
+    set:
+      rbac:
+        create: true
+      jobNamespaces: []
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: Should produce 4 documents for 2 namespace-scoped RBAC
+    set:
+      rbac:
+        create: true
+      jobNamespaces:
+        - spark-jobs
+        - spark-jobs-2
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: Should create Roles in jobNamespaces
+    set:
+      rbac:
+        create: true
+      jobNamespaces:
+        - spark-jobs
+        - spark-jobs-2
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: metadata.namespace
+          value: spark-jobs
+
+  - it: Should create RoleBinding in first jobNamespace
+    set:
+      rbac:
+        create: true
+      jobNamespaces:
+        - spark-jobs
+        - spark-jobs-2
+    documentIndex: 1
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: metadata.namespace
+          value: spark-jobs
+
+  - it: Should create Role in second jobNamespace
+    set:
+      rbac:
+        create: true
+      jobNamespaces:
+        - spark-jobs
+        - spark-jobs-2
+    documentIndex: 2
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: metadata.namespace
+          value: spark-jobs-2
+
+  - it: Should create RoleBinding in second jobNamespace
+    set:
+      rbac:
+        create: true
+      jobNamespaces:
+        - spark-jobs
+        - spark-jobs-2
+    documentIndex: 3
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - equal:
+          path: metadata.namespace
+          value: spark-jobs-2
+
+  - it: Should set annotations on RBAC resources
+    set:
+      rbac:
+        create: true
+        annotations:
+          custom-annotation: test-value
+      jobNamespaces: []
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations.custom-annotation
+          value: test-value

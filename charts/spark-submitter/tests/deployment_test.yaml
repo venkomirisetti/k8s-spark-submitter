@@ -1,0 +1,117 @@
+suite: Test submitter deployment
+
+templates:
+  - templates/deployment.yaml
+
+release:
+  name: spark-submitter
+  namespace: spark-submitter
+
+tests:
+  - it: Should render the deployment
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: spark-submitter
+
+  - it: Should default to appVersion when tag is empty
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: docker.io/venkomirisetti/k8s-spark-submitter:4.0.1-latest
+
+  - it: Should use the specified image tag when set
+    set:
+      image:
+        registry: ghcr.io
+        repository: custom-registry/spark-submitter
+        tag: 1.0.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/custom-registry/spark-submitter:1.0.0
+
+  - it: Should set replicas
+    set:
+      replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+
+  - it: Should set PORT and PROBE_PORT env vars
+    set:
+      port: 9090
+      probePort: 9091
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PORT
+            value: "9090"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PROBE_PORT
+            value: "9091"
+
+  - it: Should set TLS env vars when TLS is enabled
+    set:
+      tls:
+        enabled: true
+        certPath: /etc/tls/tls.crt
+        keyPath: /etc/tls/tls.key
+        caCertPath: /etc/tls/ca.crt
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_ENABLED
+            value: "true"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_CERT_PATH
+            value: /etc/tls/tls.crt
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_KEY_PATH
+            value: /etc/tls/tls.key
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TLS_CA_CERT_PATH
+            value: /etc/tls/ca.crt
+
+  - it: Should use correct probe path
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /healthz
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /healthz
+
+  - it: Should set topology spread constraints when configured
+    set:
+      replicas: 3
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+    asserts:
+      - exists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: Should fail topology spread constraints with replicas 1
+    set:
+      replicas: 1
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+    asserts:
+      - failedTemplate:
+          errorMessage: "replicas must be greater than 1 to enable topology spread constraints"
