@@ -357,6 +357,70 @@ readinessProbe:
     port: probes
 ```
 
+## Helm Chart
+
+A standalone Helm chart is provided in `charts/spark-submitter/`.
+
+### Install
+
+```bash
+helm install spark-submitter charts/spark-submitter/ \
+  --namespace spark-submitter --create-namespace
+```
+
+### Key Values
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `image.tag` | Chart `appVersion` | Image tag |
+| `replicas` | `1` | Number of replicas |
+| `port` | `8080` | API port |
+| `probePort` | `8081` | Health/metrics port |
+| `tls.enabled` | `false` | Enable HTTPS on API port |
+| `tls.certPath` | `""` | Path to TLS certificate |
+| `tls.keyPath` | `""` | Path to TLS private key |
+| `tls.caCertPath` | `""` | Path to CA cert (enables mTLS) |
+| `jobNamespaces` | `[]` | Namespaces for driver pods (empty = cluster-wide RBAC) |
+| `rbac.create` | `true` | Create RBAC resources |
+| `serviceAccount.create` | `true` | Create ServiceAccount |
+| `podDisruptionBudget.enable` | `false` | Create PDB (requires replicas > 1) |
+
+### TLS with Helm
+
+```bash
+# HTTPS only
+helm install spark-submitter charts/spark-submitter/ \
+  --set tls.enabled=true \
+  --set tls.certPath=/etc/tls/tls.crt \
+  --set tls.keyPath=/etc/tls/tls.key \
+  --set 'volumes[0].name=tls-certs' \
+  --set 'volumes[0].secret.secretName=my-tls-secret' \
+  --set 'volumeMounts[0].name=tls-certs' \
+  --set 'volumeMounts[0].mountPath=/etc/tls' \
+  --set 'volumeMounts[0].readOnly=true'
+
+# HTTPS + mTLS (add caCertPath)
+helm install spark-submitter charts/spark-submitter/ \
+  --set tls.enabled=true \
+  --set tls.certPath=/etc/tls/tls.crt \
+  --set tls.keyPath=/etc/tls/tls.key \
+  --set tls.caCertPath=/etc/tls/ca.crt \
+  --set 'volumes[0].name=tls-certs' \
+  --set 'volumes[0].secret.secretName=my-tls-secret' \
+  --set 'volumeMounts[0].name=tls-certs' \
+  --set 'volumeMounts[0].mountPath=/etc/tls' \
+  --set 'volumeMounts[0].readOnly=true'
+```
+
+### Namespace-Scoped RBAC
+
+```bash
+helm install spark-submitter charts/spark-submitter/ \
+  --set 'jobNamespaces={spark-jobs,spark-staging}'
+```
+
+See [`charts/spark-submitter/values.yaml`](charts/spark-submitter/values.yaml) for the full reference.
+
 ## Building
 
 ```bash
