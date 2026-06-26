@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "spark-submitter.deploymentName" . }}
+  labels:
+    {{- include "spark-submitter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "spark-submitter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "spark-submitter.selectorLabels" . | nindent 8 }}
+        {{- with .Values.labels }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- if or .Values.annotations .Values.prometheus.metrics.enable }}
+      annotations:
+      {{- if .Values.prometheus.metrics.enable }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.probePort | quote }}
+        prometheus.io/path: "/metrics"
+      {{- end }}
+      {{- with .Values.annotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
+    spec:
+      containers:
+      - name: spark-submitter
+        image: {{ include "spark-submitter.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: {{ include "spark-submitter.scheme" . }}
+          containerPort: {{ .Values.port }}
+          protocol: TCP
+        - name: probes
+          containerPort: {{ .Values.probePort }}
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "{{ .Values.port }}"
+        - name: PROBE_PORT
+          value: "{{ .Values.probePort }}"
+        {{- if .Values.tls.enabled }}
+        - name: TLS_ENABLED
+          value: "true"
+        - name: TLS_CERT_PATH
+          value: {{ .Values.tls.certPath | quote }}
+        - name: TLS_KEY_PATH
+          value: {{ .Values.tls.keyPath | quote }}
+        {{- if .Values.tls.caCertPath }}
+        - name: TLS_CA_CERT_PATH
+          value: {{ .Values.tls.caCertPath | quote }}
+        {{- end }}
+        {{- end }}
+        {{- with .Values.env }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.envFrom }}
+        envFrom:
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.volumeMounts }}
+        volumeMounts:
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            port: probes
+            path: /healthz
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            port: probes
+            path: /healthz
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        {{- with .Values.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- with .Values.sidecars }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.30-0" .Capabilities.KubeVersion.Version) (kindIs "bool" .Values.hostUsers) }}
+      hostUsers: {{ .Values.hostUsers }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints }}
+      {{- if le (int .Values.replicas) 1 }}
+      {{- fail "replicas must be greater than 1 to enable topology spread constraints"}}
+      {{- end }}
+      {{- $selectorLabels := include "spark-submitter.selectorLabels" . | fromYaml }}
+      {{- $labelSelectorDict := dict "labelSelector" ( dict "matchLabels" $selectorLabels ) }}
+      topologySpreadConstraints:
+      {{- range .Values.topologySpreadConstraints }}
+      - {{ mergeOverwrite . $labelSelectorDict | toYaml | nindent 8 | trim }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      serviceAccountName: {{ include "spark-submitter.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

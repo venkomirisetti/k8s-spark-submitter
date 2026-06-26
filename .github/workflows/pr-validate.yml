@@ -26,6 +26,37 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  helm-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install helm-docs
+        run: |
+          curl -sL https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz | tar xz
+          sudo mv helm-docs /usr/local/bin/
+
+      - name: Run helm-docs
+        run: helm-docs --chart-search-root charts/spark-submitter
+
+      - name: Check README is up to date
+        run: |
+          if ! git diff --exit-code charts/spark-submitter/README.md; then
+            echo "::error::charts/spark-submitter/README.md is out of date. Run 'helm-docs --chart-search-root charts/spark-submitter' and commit the result."
+            exit 1
+          fi
+
+  helm-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Run Helm unit tests
+        run: helm unittest charts/spark-submitter/
+
   docker-image:
     runs-on: ubuntu-latest
     needs: unit-test

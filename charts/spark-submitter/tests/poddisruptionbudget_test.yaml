@@ -1,0 +1,49 @@
+suite: Test submitter pod disruption budget
+
+templates:
+  - templates/poddisruptionbudget.yaml
+
+release:
+  name: spark-submitter
+  namespace: spark-submitter
+
+tests:
+  - it: Should not render PDB when disabled
+    set:
+      podDisruptionBudget:
+        enable: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: Should render PDB when enabled with replicas > 1
+    set:
+      replicas: 3
+      podDisruptionBudget:
+        enable: true
+        minAvailable: 1
+    asserts:
+      - containsDocument:
+          apiVersion: policy/v1
+          kind: PodDisruptionBudget
+          name: spark-submitter-pdb
+
+  - it: Should fail when enabled with replicas 1
+    set:
+      replicas: 1
+      podDisruptionBudget:
+        enable: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "replicas must be greater than 1 to enable pod disruption budget"
+
+  - it: Should set minAvailable
+    set:
+      replicas: 3
+      podDisruptionBudget:
+        enable: true
+        minAvailable: 2
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 2

@@ -1,0 +1,138 @@
+# Default values for spark-submitter.
+
+image:
+  # -- Submitter service image registry.
+  registry: docker.io
+  # -- Submitter service image repository.
+  repository: venkomirisetti/k8s-spark-submitter
+  # -- Submitter service image tag (defaults to Chart appVersion).
+  tag: ""
+  # -- Submitter service image pull policy.
+  pullPolicy: IfNotPresent
+  # -- Image pull secrets for private image registry.
+  pullSecrets: []
+
+# -- Number of replicas of the submitter service.
+replicas: 1
+
+# -- Number of old history to retain to allow rollback.
+revisionHistoryLimit: 10
+
+# -- Optional sidecars for the submitter pods.
+sidecars: []
+
+# -- Port on which the submitter service listens.
+port: 8080
+
+# -- Path for the submit endpoint on the submitter service.
+submitPath: /api/v1/spark-submit
+
+# -- Port for health/metrics probes (always plain HTTP).
+probePort: 8081
+
+# TLS configuration for submitter service.
+tls:
+  # -- Enable TLS for submitter service.
+  enabled: false
+  # -- Path to the TLS certificate file.
+  certPath: ""
+  # -- Path to the TLS private key file.
+  keyPath: ""
+  # -- Path to the CA certificate file.
+  caCertPath: ""
+
+serviceAccount:
+  # -- Specifies whether to create a service account for the submitter.
+  create: true
+  # -- Optional name for the submitter service account.
+  name: ""
+  # -- Extra annotations for the submitter service account.
+  annotations: {}
+  # -- Auto-mount service account token to the submitter pods.
+  automountServiceAccountToken: true
+
+rbac:
+  # -- Specifies whether to create RBAC resources for the submitter.
+  create: true
+  # -- Extra annotations for the submitter RBAC resources.
+  annotations: {}
+
+# -- Namespaces where the submitter creates driver pods.
+# If empty or contains "", cluster-wide RBAC is used.
+# If specific namespaces are listed, namespace-scoped Roles are created.
+jobNamespaces: []
+
+# -- Extra labels for submitter pods.
+labels: {}
+
+# -- Extra annotations for submitter pods.
+annotations: {}
+
+# -- Environment variables for the submitter container.
+env: []
+
+# -- Environment variable sources for the submitter container.
+envFrom: []
+
+# -- Volume mounts for the submitter container.
+volumeMounts: []
+
+# -- Volumes for submitter pods.
+volumes: []
+
+# -- Resource requests and limits for the submitter container.
+resources: {}
+# requests:
+#   cpu: 100m
+#   memory: 256Mi
+# limits:
+#   cpu: 500m
+#   memory: 512Mi
+
+# -- Security context for the submitter container.
+securityContext:
+  readOnlyRootFilesystem: true
+  privileged: false
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 185
+  capabilities:
+    drop:
+    - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Node selector for submitter pods.
+nodeSelector: {}
+
+# -- Affinity for submitter pods.
+affinity: {}
+
+# -- List of node taints to tolerate for submitter pods.
+tolerations: []
+
+# -- Whether to use the host user namespace.
+hostUsers: null
+
+# -- Topology spread constraints for submitter pods.
+topologySpreadConstraints: []
+
+# -- Priority class for submitter pods.
+priorityClassName: ""
+
+# -- Security context for submitter pods.
+podSecurityContext:
+  fsGroup: 185
+
+podDisruptionBudget:
+  # -- Specifies whether to create pod disruption budget for submitter.
+  # Requires replicas > 1.
+  enable: false
+  # -- Minimum number of available submitter pods.
+  minAvailable: 1
+
+# Prometheus metrics configuration.
+prometheus:
+  metrics:
+    # -- Enable Prometheus scrape annotations on submitter pods.
+    enable: true

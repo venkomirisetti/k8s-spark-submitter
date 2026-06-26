@@ -1,0 +1,42 @@
+suite: Test submitter service
+
+templates:
+  - templates/service.yaml
+
+release:
+  name: spark-submitter
+  namespace: spark-submitter
+
+tests:
+  - it: Should render the service
+    asserts:
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: spark-submitter-svc
+
+  - it: Should use http port name when TLS is disabled
+    set:
+      tls:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.ports[0].name
+          value: http
+
+  - it: Should use https port name when TLS is enabled
+    set:
+      tls:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.ports[0].name
+          value: https
+
+  - it: Should use the configured port
+    set:
+      port: 9090
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 9090

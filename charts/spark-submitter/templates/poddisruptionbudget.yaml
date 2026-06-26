@@ -1,0 +1,18 @@
+{{- if .Values.podDisruptionBudget.enable }}
+{{- if le (int .Values.replicas) 1 }}
+{{- fail "replicas must be greater than 1 to enable pod disruption budget" }}
+{{- end -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "spark-submitter.podDisruptionBudgetName" . }}
+  labels:
+    {{- include "spark-submitter.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "spark-submitter.selectorLabels" . | nindent 6 }}
+  {{- with .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ . }}
+  {{- end }}
+{{- end }}

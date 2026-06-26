@@ -357,6 +357,17 @@ readinessProbe:
     port: probes
 ```
 
+## Helm Chart
+
+A standalone Helm chart is provided in [`charts/spark-submitter/`](charts/spark-submitter/README.md).
+
+```bash
+helm install spark-submitter charts/spark-submitter/ \
+  --namespace spark-submitter --create-namespace
+```
+
+See the [chart README](charts/spark-submitter/README.md) for full values reference, TLS setup, RBAC modes, and production examples.
+
 ## Building
 
 ```bash
