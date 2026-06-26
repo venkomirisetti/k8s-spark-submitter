@@ -1,0 +1,114 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+## Prerequisites
+
+- Kubernetes 1.26+
+- Helm 3.x
+
+## Usage
+
+### Install the chart
+
+```shell
+helm install [RELEASE_NAME] charts/spark-submitter/
+```
+
+For example, to create a release named `spark-submitter` in the `spark-submitter` namespace:
+
+```shell
+helm install spark-submitter charts/spark-submitter/ \
+    --namespace spark-submitter \
+    --create-namespace
+```
+
+See [helm install](https://helm.sh/docs/helm/helm_install) for command documentation.
+
+### Upgrade the chart
+
+```shell
+helm upgrade [RELEASE_NAME] charts/spark-submitter/ [flags]
+```
+
+See [helm upgrade](https://helm.sh/docs/helm/helm_upgrade) for command documentation.
+
+### Uninstall the chart
+
+```shell
+helm uninstall [RELEASE_NAME]
+```
+
+See [helm uninstall](https://helm.sh/docs/helm/helm_uninstall) for command documentation.
+
+## TLS
+
+The chart passes cert file paths as environment variables. You are responsible for mounting the cert files via `volumes` and `volumeMounts` values.
+
+### HTTPS only
+
+```shell
+helm install spark-submitter charts/spark-submitter/ \
+    --set tls.enabled=true \
+    --set tls.certPath=/etc/tls/tls.crt \
+    --set tls.keyPath=/etc/tls/tls.key \
+    --set 'volumes[0].name=tls-certs' \
+    --set 'volumes[0].secret.secretName=my-tls-secret' \
+    --set 'volumeMounts[0].name=tls-certs' \
+    --set 'volumeMounts[0].mountPath=/etc/tls' \
+    --set 'volumeMounts[0].readOnly=true'
+```
+
+### HTTPS + mTLS
+
+Add `tls.caCertPath` to enable mutual TLS — clients must present a cert signed by this CA:
+
+```shell
+helm install spark-submitter charts/spark-submitter/ \
+    --set tls.enabled=true \
+    --set tls.certPath=/etc/tls/tls.crt \
+    --set tls.keyPath=/etc/tls/tls.key \
+    --set tls.caCertPath=/etc/tls/ca.crt \
+    --set 'volumes[0].name=tls-certs' \
+    --set 'volumes[0].secret.secretName=my-tls-secret' \
+    --set 'volumeMounts[0].name=tls-certs' \
+    --set 'volumeMounts[0].mountPath=/etc/tls' \
+    --set 'volumeMounts[0].readOnly=true'
+```
+
+## RBAC
+
+By default, the chart creates a ClusterRole granting access to pods, configmaps, and services in all namespaces.
+
+To restrict to specific namespaces, set `jobNamespaces`:
+
+```shell
+helm install spark-submitter charts/spark-submitter/ \
+    --set 'jobNamespaces={spark-jobs,spark-staging}'
+```
+
+This creates namespace-scoped Roles and RoleBindings instead of cluster-wide resources.
+
+## Local Development (kind)
+
+```shell
+make image SPARK_VERSION=4.0.1 BUILD_NUMBER=latest
+kind load docker-image venkomirisetti/k8s-spark-submitter:4.0.1-latest --name submitter
+
+helm install spark-submitter charts/spark-submitter/ \
+    --kube-context kind-submitter \
+    --namespace spark-submitter --create-namespace \
+    --set image.pullPolicy=Never
+```
+
+## Testing
+
+Helm unit tests are in `tests/`. Run with:
+
+```shell
+helm unittest charts/spark-submitter/
+```
+
+{{ template "chart.valuesSection" . }}
