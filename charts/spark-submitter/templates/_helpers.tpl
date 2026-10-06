@@ -120,6 +120,7 @@ Policy rules for the submitter RBAC (reusable across ClusterRole and Role).
   - pods
   verbs:
   - get
+  - list
   - create
   - delete
 - apiGroups:
