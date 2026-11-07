@@ -24,6 +24,9 @@
         <jackson.version>2.18.2</jackson.version>
         <slf4j.version>2.0.16</slf4j.version>
         <log4j.version>2.24.3</log4j.version>
+        <jakarta-servlet.version>5.0.0</jakarta-servlet.version>
+        <!-- Spark 4.0 and 4.1 shade Jetty 11. The spark-4.2 and spark-4.3 profiles switch to Jetty 12. -->
+        <jetty.compat.dir>src/main/jetty11/scala</jetty.compat.dir>
         <scalatest.version>3.2.17</scalatest.version>
         <scala-collection-compat.version>2.7.0</scala-collection-compat.version>
         <micrometer-prometheus.version>1.15.4</micrometer-prometheus.version>
@@ -35,6 +38,7 @@
         <maven-assembly-plugin.version>3.7.1</maven-assembly-plugin.version>
         <scala-maven-plugin.version>4.8.1</scala-maven-plugin.version>
         <scalatest-maven-plugin.version>2.2.0</scalatest-maven-plugin.version>
+        <build-helper-maven-plugin.version>3.6.0</build-helper-maven-plugin.version>
 
         <!-- Java 17 compatibility for tests -->
         <java17.test.jvm.flags>-Djdk.attach.allowAttachSelf=true --add-opens java.base/sun.security.x509=ALL-UNNAMED</java17.test.jvm.flags>
@@ -55,7 +59,7 @@
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
-            <version>5.0.0</version>
+            <version>${jakarta-servlet.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -167,6 +171,21 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>${build-helper-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>add-jetty-compat-source</id>
+                        <phase>generate-sources</phase>
+                        <goals><goal>add-source</goal></goals>
+                        <configuration>
+                            <sources><source>${jetty.compat.dir}</source></sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
                 <version>${scala-maven-plugin.version}</version>
@@ -261,5 +280,33 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Spark 4.2 and later shade Jetty 12 and ship Fabric8 7.6 and Scala 2.13.18. -->
+        <profile>
+            <id>spark-4.2</id>
+            <properties>
+                <spark.version>4.2.1</spark.version>
+                <scala.version>2.13.18</scala.version>
+                <kubernetes-client.version>7.6.1</kubernetes-client.version>
+                <slf4j.version>2.0.17</slf4j.version>
+                <log4j.version>2.25.4</log4j.version>
+                <jakarta-servlet.version>6.0.0</jakarta-servlet.version>
+                <jetty.compat.dir>src/main/jetty12/scala</jetty.compat.dir>
+            </properties>
+        </profile>
+        <profile>
+            <id>spark-4.3</id>
+            <properties>
+                <spark.version>4.3.0</spark.version>
+                <scala.version>2.13.18</scala.version>
+                <kubernetes-client.version>7.6.1</kubernetes-client.version>
+                <slf4j.version>2.0.17</slf4j.version>
+                <log4j.version>2.25.4</log4j.version>
+                <jakarta-servlet.version>6.0.0</jakarta-servlet.version>
+                <jetty.compat.dir>src/main/jetty12/scala</jetty.compat.dir>
+            </properties>
+        </profile>
+    </profiles>
 
 </project>

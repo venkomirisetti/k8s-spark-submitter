@@ -141,4 +141,14 @@ Policy rules for the submitter RBAC (reusable across ClusterRole and Role).
   - create
   - delete
   - patch
+# Spark 4.2 and later create a NetworkPolicy for the executors of every application.
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - get
+  - create
+  - delete
+  - patch
 {{- end -}}

@@ -80,7 +80,7 @@ helm install spark-submitter charts/spark-submitter/ \
 
 ## RBAC
 
-By default, the chart creates a ClusterRole granting access to pods, configmaps, and services in all namespaces.
+By default, the chart creates a ClusterRole granting access to pods, configmaps, services, and networkpolicies in all namespaces. Spark 4.2 and later create a NetworkPolicy for the executors of every application, so submitters built with the `spark-4.2` or `spark-4.3` profile need the networkpolicies rule.
 
 To restrict to specific namespaces, set `jobNamespaces`:
 

@@ -40,6 +40,43 @@ tests:
           path: rules[0].verbs
           content: delete
 
+  - it: Should grant networkpolicies access in the ClusterRole
+    set:
+      rbac:
+        create: true
+      jobNamespaces: []
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: rules[3].apiGroups[0]
+          value: networking.k8s.io
+      - equal:
+          path: rules[3].resources[0]
+          value: networkpolicies
+      - contains:
+          path: rules[3].verbs
+          content: create
+      - contains:
+          path: rules[3].verbs
+          content: patch
+
+  - it: Should grant networkpolicies access in namespace Roles
+    set:
+      rbac:
+        create: true
+      jobNamespaces:
+        - spark-jobs
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Role
+      - equal:
+          path: rules[3].resources[0]
+          value: networkpolicies
+      - contains:
+          path: rules[3].verbs
+          content: patch
+
   - it: Should create ClusterRoleBinding when jobNamespaces is empty
     set:
       rbac:

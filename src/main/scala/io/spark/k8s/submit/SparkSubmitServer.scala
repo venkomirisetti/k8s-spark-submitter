@@ -7,9 +7,9 @@ import io.spark.k8s.submit.service.{KubernetesClientProvider, SparkSubmitter}
 import io.spark.k8s.submit.tls.{CertReloadFilter, CertReloadWatcher, TlsContextLoader}
 import jakarta.servlet.DispatcherType
 import org.slf4j.LoggerFactory
-import org.sparkproject.jetty.server.handler.HandlerList
+import io.spark.k8s.submit.jetty.JettyCompat
+import io.spark.k8s.submit.jetty.JettyCompat.ContextHandler
 import org.sparkproject.jetty.server.{AbstractConnectionFactory, HttpConnectionFactory, Server, ServerConnector}
-import org.sparkproject.jetty.servlet.{FilterHolder, ServletContextHandler, ServletHolder}
 import org.sparkproject.jetty.util.thread.QueuedThreadPool
 
 import java.util
@@ -96,10 +96,9 @@ object SparkSubmitServer {
     server.addConnector(apiConnector)
     server.addConnector(createProbeConnector(server))
 
-    val handlers = new HandlerList()
-    handlers.addHandler(createApiContext(metrics, submitter, certReloadWatcher))
-    handlers.addHandler(createProbeContext(metrics))
-    server.setHandler(handlers)
+    server.setHandler(JettyCompat.handlers(
+      createApiContext(metrics, submitter, certReloadWatcher),
+      createProbeContext(metrics)))
     server.setStopTimeout(ServerConfig.Server.shutdownTimeoutMs)
     server
   }
@@ -159,29 +158,25 @@ object SparkSubmitServer {
   private def createApiContext(
                                 metrics: SparkSubmitMetrics,
                                 submitter: SparkSubmitter,
-                                certReloadWatcher: Option[CertReloadWatcher]): ServletContextHandler = {
-    val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
-    context.setContextPath(ApiPaths.Base)
-    context.setVirtualHosts(Array("@api", "@api-tls"))
+                                certReloadWatcher: Option[CertReloadWatcher]): ContextHandler = {
+    val context = JettyCompat.newContext(ApiPaths.Base, Seq("@api", "@api-tls"))
 
     // Cert reload check filter — first in chain, sub-nanosecond when debounced
     certReloadWatcher.foreach { watcher =>
-      context.addFilter(new FilterHolder(new CertReloadFilter(watcher)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
+      context.addFilter(JettyCompat.filterHolder(new CertReloadFilter(watcher)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
     }
 
-    context.addFilter(new FilterHolder(new SparkSubmitMetricsFilter(metrics)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
+    context.addFilter(JettyCompat.filterHolder(new SparkSubmitMetricsFilter(metrics)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
 
-    context.addServlet(new ServletHolder(new SparkSubmitServlet(submitter)), ApiPaths.SparkSubmit)
+    context.addServlet(JettyCompat.servletHolder(new SparkSubmitServlet(submitter)), ApiPaths.SparkSubmit)
     context
   }
 
-  private def createProbeContext(metrics: SparkSubmitMetrics): ServletContextHandler = {
-    val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
-    context.setContextPath(ManagementPaths.Base)
-    context.setVirtualHosts(Array("@probes"))
+  private def createProbeContext(metrics: SparkSubmitMetrics): ContextHandler = {
+    val context = JettyCompat.newContext(ManagementPaths.Base, Seq("@probes"))
 
-    context.addServlet(new ServletHolder(new MetricsServlet(metrics)), ManagementPaths.Metrics)
-    context.addServlet(new ServletHolder(new HealthServlet), ManagementPaths.Health)
+    context.addServlet(JettyCompat.servletHolder(new MetricsServlet(metrics)), ManagementPaths.Metrics)
+    context.addServlet(JettyCompat.servletHolder(new HealthServlet), ManagementPaths.Health)
     context
   }
 }

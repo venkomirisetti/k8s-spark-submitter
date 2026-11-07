@@ -6,11 +6,13 @@ on:
 
 env:
   DOCKER_REPO: venkomirisetti/k8s-spark-submitter
-  SPARK_VERSION: "4.0.1"
 
 jobs:
   unit-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        profile: ["", spark-4.2, spark-4.3]
     steps:
       - uses: actions/checkout@v4
 
@@ -21,11 +23,27 @@ jobs:
           cache: maven
 
       - name: Build and test
-        run: ./mvnw clean verify
+        run: ./mvnw clean verify ${{ matrix.profile && format('-P{0}', matrix.profile) || '' }}
 
   docker-push:
     runs-on: ubuntu-latest
     needs: unit-test
+    strategy:
+      matrix:
+        include:
+          # The Spark 4.0.1 line keeps the existing tags, including latest.
+          - spark-version: "4.0.1"
+            profile: ""
+            spark-image: docker.io/library/spark:4.0.1
+            latest: true
+          - spark-version: "4.2.1"
+            profile: spark-4.2
+            spark-image: docker.io/library/spark:4.2.1
+            latest: false
+          - spark-version: "4.3.0"
+            profile: spark-4.3
+            spark-image: docker.io/apache/spark:4.3.0
+            latest: false
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +54,9 @@ jobs:
           cache: maven
 
       - name: Build JAR
-        run: ./mvnw clean package -DskipTests -Dmaven.test.skip=true
+        run: make package MAVEN_PROFILE=${{ matrix.profile }}
+
+      - uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -44,13 +64,15 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build and push multi-platform image
         env:
           BUILD_NUMBER: ${{ github.run_number }}
+          SPARK_VERSION: ${{ matrix.spark-version }}
+          SPARK_IMAGE: ${{ matrix.spark-image }}
         run: |
-          make image-only IMAGE_TAG="${DOCKER_REPO}:${SPARK_VERSION}-${BUILD_NUMBER}"
-          docker tag "${DOCKER_REPO}:${SPARK_VERSION}-${BUILD_NUMBER}" "${DOCKER_REPO}:${SPARK_VERSION}-latest"
-          docker tag "${DOCKER_REPO}:${SPARK_VERSION}-${BUILD_NUMBER}" "${DOCKER_REPO}:latest"
-          docker push "${DOCKER_REPO}:${SPARK_VERSION}-${BUILD_NUMBER}"
-          docker push "${DOCKER_REPO}:${SPARK_VERSION}-latest"
-          docker push "${DOCKER_REPO}:latest"
+          make push-multiarch IMAGE_TAG="${DOCKER_REPO}:${SPARK_VERSION}-${BUILD_NUMBER}"
+
+      - name: Move latest tag
+        if: matrix.latest
+        run: |
+          docker buildx imagetools create -t "${DOCKER_REPO}:latest" "${DOCKER_REPO}:${{ matrix.spark-version }}-latest"

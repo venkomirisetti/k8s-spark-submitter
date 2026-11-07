@@ -378,6 +378,26 @@ make package    # build JAR (skip tests)
 make image      # build JAR + Docker image
 ```
 
+### Spark versions
+
+The submitter builds driver pods with the Spark libraries in its image, so build it for the Spark
+version your applications run. The default build targets Spark 4.0.1. Spark 4.2 moved its shaded
+Jetty from 11 to 12, so Spark 4.2 and later use a Maven profile:
+
+| Spark | Maven profile | Base image |
+| --- | --- | --- |
+| 4.0.x, 4.1.x | none (default) | `docker.io/library/spark:4.0.1` |
+| 4.2.x | `spark-4.2` | `docker.io/library/spark:4.2.1` |
+| 4.3.x | `spark-4.3` | `docker.io/apache/spark:4.3.0` |
+
+```bash
+make test MAVEN_PROFILE=spark-4.3
+make image MAVEN_PROFILE=spark-4.3 SPARK_VERSION=4.3.0 SPARK_IMAGE=docker.io/apache/spark:4.3.0
+```
+
+The Jetty-specific code lives in `src/main/jetty11` and `src/main/jetty12`. The profile selects one.
+Submitters on Spark 4.2 and later also need the chart's networkpolicies rule.
+
 ## Docker
 
 ```bash
@@ -386,6 +406,10 @@ make image
 
 # Build with custom base image
 make image SPARK_IMAGE=my-registry/spark:4.0.1
+
+# Build and push linux/amd64 and linux/arm64 images
+make package MAVEN_PROFILE=spark-4.3
+make push-multiarch SPARK_VERSION=4.3.0 SPARK_IMAGE=docker.io/apache/spark:4.3.0
 ```
 
 The service JAR is a thin layer (~1MB) on top of the Spark base image. All Spark/K8s/Jackson dependencies are provided by the base image at runtime.
@@ -393,16 +417,16 @@ The service JAR is a thin layer (~1MB) on top of the Spark base image. All Spark
 ## Tech Stack
 
 - **Language**: Scala 2.13 on JDK 17
-- **Spark**: 4.0.1 (open-source)
-- **HTTP Server**: Jetty (shaded inside spark-core)
-- **K8s Client**: Fabric8 7.1.0
+- **Spark**: 4.0.1 by default, 4.2.1 and 4.3.0 with Maven profiles (open-source)
+- **HTTP Server**: Jetty 11 or 12 (shaded inside spark-core)
+- **K8s Client**: Fabric8 7.1.0 (7.6.1 for Spark 4.2 and later)
 - **Metrics**: Micrometer Prometheus
 - **Build**: Maven (via `./mvnw` wrapper)
 
 ## CI/CD
 
-- **PR Validation**: Tests run automatically on every pull request
-- **Docker Push**: Image pushed to Docker Hub on merge to main (`venkomirisetti/k8s-spark-submitter:<spark-version>-<build>`)
+- **PR Validation**: Tests run for the default build and each Spark profile
+- **Docker Push**: linux/amd64 and linux/arm64 images pushed to Docker Hub on merge to main for each Spark line (`venkomirisetti/k8s-spark-submitter:<spark-version>-<build>`). `latest` stays on Spark 4.0.1
 
 ## Credits
 
