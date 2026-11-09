@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="830" height="840" viewBox="0 0 830 840" font-family="'Salesforce Sans', -apple-system, 'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="arrow-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 z" fill="#014486"/>
+    </marker>
+    <marker id="arrow-return" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 z" fill="#9050E9"/>
+    </marker>
+    <marker id="arrow-owner" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L10,5 L0,9 z" fill="#2E844A"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#032D60" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .ns-title { font-size: 15px; font-weight: 600; fill: #032D60; }
+      .card-title { font-size: 15px; font-weight: 600; fill: #181818; }
+      .card-sub { font-size: 13px; fill: #444444; }
+      .code { font-family: 'Salesforce Sans Mono', SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+      .label { font-size: 13px; }
+      .call { fill: #014486; }
+      .ret { fill: #9050E9; }
+      .note { font-size: 13px; fill: #444444; }
+      .resource { font-size: 14px; fill: #181818; }
+      .call-line { stroke: #014486; stroke-width: 1.5; fill: none; }
+      .ret-line { stroke: #9050E9; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    </style>
+  </defs>
+  <rect width="830" height="840" fill="#FFFFFF"/>
+
+  <!-- Namespaces -->
+  <rect x="14" y="116" width="802" height="430" rx="12" fill="#FAFAF9" stroke="#C9C9C9"/>
+  <text x="800" y="141" text-anchor="end" class="ns-title">K8s Spark Submitter (submitter namespace)</text>
+  <rect x="14" y="606" width="802" height="168" rx="12" fill="#FAFAF9" stroke="#C9C9C9"/>
+  <text x="800" y="631" text-anchor="end" class="ns-title">Spark Jobs (job namespace)</text>
+
+  <!-- Client -->
+  <rect x="14" y="20" width="802" height="56" rx="8" fill="#FFFFFF" stroke="#0176D3" filter="url(#shadow)"/>
+  <circle cx="198" cy="39" r="7" fill="#0176D3"/>
+  <path d="M185,61 a13,12 0 0 1 26,0 z" fill="#0176D3"/>
+  <text x="223" y="44" font-size="16" font-weight="600" fill="#181818">Client</text>
+  <text x="223" y="63" font-size="13" fill="#444444">any HTTP caller, e.g. Kubeflow Spark Operator, Apache Livy, schedulers</text>
+
+  <!-- Client <-> REST API -->
+  <line x1="239" y1="76" x2="239" y2="158" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="231" y="104" text-anchor="end" class="code call">POST /api/v1/spark-submit</text>
+  <line x1="271" y1="160" x2="271" y2="78" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="279" y="104" class="code ret">201 SparkSubmitResponse</text>
+
+  <!-- REST API -->
+  <rect x="160" y="160" width="190" height="56" rx="8" fill="#EEF4FF" stroke="#0176D3" filter="url(#shadow)"/>
+  <text x="255" y="183" text-anchor="middle" class="card-title">REST API</text>
+  <text x="255" y="203" text-anchor="middle" class="card-sub">SparkSubmitServlet on Jetty</text>
+
+  <!-- REST API <-> SparkSubmitter -->
+  <line x1="239" y1="216" x2="239" y2="266" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="231" y="246" text-anchor="end" class="code call">submitJob(request, dryRun)</text>
+  <line x1="271" y1="268" x2="271" y2="218" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="279" y="246" class="code ret">SparkSubmitResponse</text>
+
+  <!-- SparkSubmitter -->
+  <rect x="160" y="268" width="190" height="56" rx="8" fill="#EEF4FF" stroke="#0176D3" filter="url(#shadow)"/>
+  <text x="255" y="291" text-anchor="middle" class="card-title">SparkSubmitter</text>
+  <text x="255" y="311" text-anchor="middle" class="card-sub">service</text>
+
+  <!-- SparkSubmitter <-> K8sSparkSubmitArgsParser -->
+  <line x1="350" y1="286" x2="588" y2="286" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="470" y="279" text-anchor="middle" class="code call">parseArgs(args)</text>
+  <line x1="590" y1="306" x2="352" y2="306" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="470" y="322" text-anchor="middle" class="code ret">K8sSparkSubmitArgs</text>
+
+  <rect x="590" y="262" width="210" height="68" rx="8" fill="#FFF3E6" stroke="#DD7A01" filter="url(#shadow)"/>
+  <text x="695" y="285" text-anchor="middle" class="card-title">K8sSparkSubmitArgsParser</text>
+  <text x="695" y="304" text-anchor="middle" class="card-sub">SparkSubmitArguments,</text>
+  <text x="695" y="320" text-anchor="middle" class="card-sub">ClientArguments</text>
+
+  <!-- SparkSubmitter <-> K8sSparkClient -->
+  <line x1="239" y1="324" x2="239" y2="374" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="231" y="354" text-anchor="end" class="code call">submit(args, client, dryRun)</text>
+  <line x1="271" y1="376" x2="271" y2="326" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="279" y="354" class="code ret">SubmissionResult</text>
+
+  <!-- K8sSparkClient -->
+  <rect x="160" y="376" width="190" height="140" rx="8" fill="#FFF3E6" stroke="#DD7A01" filter="url(#shadow)"/>
+  <text x="255" y="441" text-anchor="middle" class="card-title">K8sSparkClient</text>
+  <text x="255" y="461" text-anchor="middle" class="card-sub">builds and creates resources</text>
+
+  <!-- K8sSparkClient <-> KubernetesDriverBuilder -->
+  <line x1="350" y1="394" x2="588" y2="394" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="470" y="387" text-anchor="middle" class="code call">buildFromFeatures(conf, client)</text>
+  <line x1="590" y1="414" x2="352" y2="414" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="470" y="430" text-anchor="middle" class="code ret">KubernetesDriverSpec</text>
+
+  <rect x="590" y="370" width="210" height="68" rx="8" fill="#F3F3F3" stroke="#747474" filter="url(#shadow)"/>
+  <text x="695" y="393" text-anchor="middle" class="card-title">KubernetesDriverBuilder</text>
+  <text x="695" y="412" text-anchor="middle" class="card-sub">driver pod spec from</text>
+  <text x="695" y="428" text-anchor="middle" class="card-sub">feature steps</text>
+
+  <!-- K8sSparkClient <-> KubernetesClientUtils -->
+  <line x1="350" y1="478" x2="588" y2="478" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="470" y="471" text-anchor="middle" class="code call">buildConfigMap(name, data)</text>
+  <line x1="590" y1="498" x2="352" y2="498" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="470" y="514" text-anchor="middle" class="code ret">ConfigMap</text>
+
+  <rect x="590" y="454" width="210" height="68" rx="8" fill="#F3F3F3" stroke="#747474" filter="url(#shadow)"/>
+  <text x="695" y="483" text-anchor="middle" class="card-title">KubernetesClientUtils</text>
+  <text x="695" y="503" text-anchor="middle" class="card-sub">spark.properties ConfigMap</text>
+
+  <!-- K8sSparkClient <-> Kubernetes API -->
+  <line x1="239" y1="516" x2="239" y2="660" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="231" y="574" text-anchor="end" class="label call">Kubernetes API:</text>
+  <text x="231" y="591" text-anchor="end" class="label call">create driver pod and resources</text>
+  <line x1="271" y1="662" x2="271" y2="518" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="279" y="583" class="label ret">driver pod UID</text>
+
+  <!-- Job namespace resources -->
+  <rect x="160" y="662" width="190" height="56" rx="8" fill="#EBF7E6" stroke="#2E844A" filter="url(#shadow)"/>
+  <text x="255" y="695" text-anchor="middle" class="card-title">Driver Pod</text>
+
+  <rect x="470" y="650" width="330" height="80" rx="10" fill="none" stroke="#2E844A" stroke-dasharray="5 4"/>
+  <rect x="480" y="668" width="98" height="44" rx="6" fill="#EBF7E6" stroke="#2E844A" filter="url(#shadow)"/>
+  <text x="529" y="695" text-anchor="middle" class="resource">ConfigMap</text>
+  <rect x="586" y="668" width="98" height="44" rx="6" fill="#EBF7E6" stroke="#2E844A" filter="url(#shadow)"/>
+  <text x="635" y="695" text-anchor="middle" class="resource">Service</text>
+  <rect x="692" y="668" width="98" height="44" rx="6" fill="#EBF7E6" stroke="#2E844A" filter="url(#shadow)"/>
+  <text x="741" y="695" text-anchor="middle" class="resource">Secret</text>
+  <line x1="470" y1="690" x2="352" y2="690" stroke="#2E844A" stroke-width="1.5" stroke-dasharray="2 3" marker-end="url(#arrow-owner)"/>
+  <text x="411" y="682" text-anchor="middle" class="code" fill="#2E844A">ownerReference</text>
+  <text x="635" y="749" text-anchor="middle" class="note">and other resources from Spark feature steps,</text>
+  <text x="635" y="765" text-anchor="middle" class="note">all deleted with the driver pod</text>
+
+  <!-- Legend -->
+  <line x1="30" y1="800" x2="62" y2="800" class="call-line" marker-end="url(#arrow-call)"/>
+  <text x="70" y="804" class="note">call</text>
+  <line x1="30" y1="823" x2="62" y2="823" class="ret-line" marker-end="url(#arrow-return)"/>
+  <text x="70" y="827" class="note">return</text>
+  <rect x="160" y="793" width="14" height="14" rx="3" fill="#EEF4FF" stroke="#0176D3"/>
+  <text x="182" y="804" class="note">spark-common</text>
+  <rect x="160" y="816" width="14" height="14" rx="3" fill="#FFF3E6" stroke="#DD7A01"/>
+  <text x="182" y="827" class="note">Spark-specific module (spark-3.5, spark-4.0, …)</text>
+  <rect x="590" y="793" width="14" height="14" rx="3" fill="#F3F3F3" stroke="#747474"/>
+  <text x="612" y="804" class="note">Spark library</text>
+  <rect x="590" y="816" width="14" height="14" rx="3" fill="#EBF7E6" stroke="#2E844A"/>
+  <text x="612" y="827" class="note">Kubernetes resource</text>
+</svg>
