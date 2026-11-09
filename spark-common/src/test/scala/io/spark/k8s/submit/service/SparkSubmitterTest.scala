@@ -585,7 +585,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     Mockito.when(resourceListOps.inNamespace(any())).thenReturn(resourceListOps)
     Mockito.when(resourceListOps.dryRun(anyBoolean())).thenReturn(resourceListOps)
     Mockito.when(resourceListOps.forceConflicts()).thenReturn(resourceListOps)
-    Mockito.when(resourceListOps.serverSideApply()).thenReturn(java.util.Collections.emptyList())
+    Mockito.when(resourceListOps.serverSideApply()).thenReturn(java.util.Collections.emptyList[io.fabric8.kubernetes.api.model.HasMetadata]())
 
     val k8sProvider = createMockK8sProvider(mockClient)
     new SparkSubmitter(k8sProvider)
@@ -612,7 +612,7 @@ class SparkSubmitterTest extends AnyFlatSpec
     Mockito.when(resourceListOps.inNamespace(any())).thenReturn(resourceListOps)
     Mockito.when(resourceListOps.dryRun(anyBoolean())).thenReturn(resourceListOps)
     Mockito.when(resourceListOps.forceConflicts()).thenReturn(resourceListOps)
-    Mockito.when(resourceListOps.serverSideApply()).thenReturn(java.util.Collections.emptyList())
+    Mockito.when(resourceListOps.serverSideApply()).thenReturn(java.util.Collections.emptyList[io.fabric8.kubernetes.api.model.HasMetadata]())
 
     val k8sProvider = createMockK8sProvider(mockClient)
     new SparkSubmitter(k8sProvider)

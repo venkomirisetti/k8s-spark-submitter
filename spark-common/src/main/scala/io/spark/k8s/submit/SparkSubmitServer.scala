@@ -132,10 +132,10 @@ object SparkSubmitServer {
       connector.setIdleTimeout(ServerConfig.Server.connectionIdleTimeoutMs)
       connector.setName("api-tls")
 
-      val watcher = Option.when(ServerConfig.Tls.certReloadEnabled){
-        new CertReloadWatcher(sslContextFactory, certPath, keyPath, caCertPath,
-          ServerConfig.Tls.certCheckIntervalMs, ServerConfig.Tls.certVerifyWithHash)
-      }
+      val watcher = if (ServerConfig.Tls.certReloadEnabled) {
+        Some(new CertReloadWatcher(sslContextFactory, certPath, keyPath, caCertPath,
+          ServerConfig.Tls.certCheckIntervalMs, ServerConfig.Tls.certVerifyWithHash))
+      } else None
 
       (connector, watcher)
     } else {
@@ -166,10 +166,10 @@ object SparkSubmitServer {
 
     // Cert reload check filter — first in chain, sub-nanosecond when debounced
     certReloadWatcher.foreach { watcher =>
-      context.addFilter(new FilterHolder(new CertReloadFilter(watcher)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
+      context.addFilter(new FilterHolder(new CertReloadFilter(watcher)), "/*", java.util.EnumSet.of(DispatcherType.REQUEST))
     }
 
-    context.addFilter(new FilterHolder(new SparkSubmitMetricsFilter(metrics)), "/*", util.EnumSet.of(DispatcherType.REQUEST))
+    context.addFilter(new FilterHolder(new SparkSubmitMetricsFilter(metrics)), "/*", java.util.EnumSet.of(DispatcherType.REQUEST))
 
     context.addServlet(new ServletHolder(new SparkSubmitServlet(submitter)), ApiPaths.SparkSubmit)
     context

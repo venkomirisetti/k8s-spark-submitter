@@ -12,3 +12,13 @@ coverage:
 comment:
   layout: "reach,diff,flags,files"
   behavior: default
+
+# Same files as sonar.coverage.exclusions in sonar-project.properties
+ignore:
+  - "**/SparkSubmitServer.scala"
+  - "**/K8sSparkSubmitArgsParser.scala"
+  - "**/KubernetesClientProvider.scala"
+  - "**/Constants.scala"
+  - "**/ServerConfig.scala"
+  - "**/SparkSubmitException.scala"
+  - "**/model/*.scala"
