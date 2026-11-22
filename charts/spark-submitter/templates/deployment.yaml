@@ -75,13 +75,13 @@ spec:
         livenessProbe:
           httpGet:
             port: probes
-            path: /healthz
+            path: /livez
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             port: probes
-            path: /healthz
+            path: /readyz
           initialDelaySeconds: 5
           periodSeconds: 5
         {{- with .Values.securityContext }}

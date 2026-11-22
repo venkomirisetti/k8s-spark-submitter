@@ -85,14 +85,14 @@ tests:
             name: TLS_CA_CERT_PATH
             value: /etc/tls/ca.crt
 
-  - it: Should use correct probe path
+  - it: Should use the liveness and readiness probe paths
     asserts:
       - equal:
           path: spec.template.spec.containers[0].livenessProbe.httpGet.path
-          value: /healthz
+          value: /livez
       - equal:
           path: spec.template.spec.containers[0].readinessProbe.httpGet.path
-          value: /healthz
+          value: /readyz
 
   - it: Should set topology spread constraints when configured
     set:

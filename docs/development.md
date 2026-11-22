@@ -94,6 +94,18 @@ release 17, which runs on Java 17.
 Spark 3.5 bundles Jetty 9, which uses `javax.servlet`, so `spark-3.5` compiles a `javax.servlet` copy of
 `spark-common` into `spark-3.5/target/spark-common-javax`.
 
+`SparkSubmitServer` runs one Jetty server per port and owns the ports, TLS, thread pools and lifecycle,
+using Jetty APIs that are the same in every Jetty version Spark shades. Servlet contexts differ between
+those versions, so each module implements `ServletContextFactory` as
+`io.spark.k8s.submit.server.SparkServletContextFactory`:
+
+| Module | Jetty | Notes |
+|--------|-------|-------|
+| `spark-3.5` | 9 | Wraps the context in a `StatisticsHandler`, which Jetty 9 needs to drain in-flight requests on stop |
+| `spark-4.0` | 11 | Plain servlet context |
+
+`SparkServletContextFactoryTest` in `spark-common` runs against each module's implementation.
+
 `make` targets build `spark-4.0` by default. Select a module with `SPARK_MODULE`:
 
 ```bash
@@ -107,7 +119,8 @@ the parent's `<modules>`.
 
 The classes in `org.apache.spark.deploy` (`K8sSparkSubmitArgsParser`, `K8sSparkClient`) call Spark's
 package-private APIs, so each module keeps its own copy in `src/`, with its tests. They are identical for
-3.5 and 4.0 today; change them per module when a Spark version's internals differ.
+3.5 and 4.0 today; change them per module when a Spark version's internals differ. A new module also
+needs its own `SparkServletContextFactory` for the Jetty version that Spark shades.
 
 ## Docker
 

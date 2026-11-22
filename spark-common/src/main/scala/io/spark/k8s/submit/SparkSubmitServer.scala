@@ -1,43 +1,46 @@
 package io.spark.k8s.submit
 
 import io.spark.k8s.submit.api.{ApiPaths, ManagementPaths}
-import io.spark.k8s.submit.api.servlet.{HealthServlet, MetricsServlet, SparkSubmitServlet}
+import io.spark.k8s.submit.api.servlet.{LivenessServlet, MetricsServlet, ReadinessServlet, SparkSubmitServlet}
+import io.spark.k8s.submit.server.SparkServletContextFactory
 import io.spark.k8s.submit.metrics.{SparkSubmitMetrics, SparkSubmitMetricsFilter}
 import io.spark.k8s.submit.service.{KubernetesClientProvider, SparkSubmitter}
 import io.spark.k8s.submit.tls.{CertReloadFilter, CertReloadWatcher, TlsContextLoader}
-import jakarta.servlet.DispatcherType
 import org.slf4j.LoggerFactory
-import org.sparkproject.jetty.server.handler.HandlerList
-import org.sparkproject.jetty.server.{AbstractConnectionFactory, HttpConnectionFactory, Server, ServerConnector}
-import org.sparkproject.jetty.servlet.{FilterHolder, ServletContextHandler, ServletHolder}
+import org.sparkproject.jetty.server.{AbstractConnectionFactory, Handler, HttpConnectionFactory, Server, ServerConnector}
 import org.sparkproject.jetty.util.thread.QueuedThreadPool
 
-import java.util
-
 /**
- * HTTP/HTTPS server entry point for the Spark Submit REST API.
+ * Entry point for the Spark Submit REST API.
  *
- * Dual-port architecture:
- *  - API port (default 8080): /spark-submit — HTTP or HTTPS depending on TLS config
- *  - Probe port (default 8081): /health, /metrics — always plain HTTP
+ * Runs two servers:
+ *  - API server (default port 8080): serves /api/v1/spark-submit over HTTP, or HTTPS when TLS is enabled
+ *  - Probe server (default port 8081): serves /livez, /readyz, /healthz and /metrics over HTTP
  *
- * TLS modes (configured via environment variables):
- *  - TLS disabled: both ports plain HTTP
- *  - TLS enabled: API port serves HTTPS; mTLS when CA cert is provided
- *  - Cert reload: optionally checks for cert file changes on incoming requests
+ * TLS (API server only, configured via environment variables):
+ *  - mTLS when a CA cert is provided
+ *  - Optional cert reload, checked on incoming requests
+ *
+ * The API server starts before the probe server and stops before it.
+ * /readyz returns 503 whenever the API server is not running.
  */
 object SparkSubmitServer {
 
   private val log = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-    val server = createServer()
-    registerShutdownHook(server)
+    val metrics = new SparkSubmitMetrics()
+    val submitter = new SparkSubmitter(new KubernetesClientProvider())
+
+    val apiServer = createApiServer(metrics, submitter)
+    val probeServer = createProbeServer(metrics, apiServer)
+    registerShutdownHook(apiServer, probeServer)
 
     try {
-      server.start()
+      apiServer.start()
+      probeServer.start()
       printBanner()
-      server.join()
+      apiServer.join()
     } catch {
       case e: Exception =>
         log.error("Failed to start server", e)
@@ -75,42 +78,53 @@ object SparkSubmitServer {
           #""".stripMargin('#'))
   }
 
-  private def registerShutdownHook(server: Server): Unit =
+  private def registerShutdownHook(apiServer: Server, probeServer: Server): Unit =
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       log.info("Shutting down SparkSubmitServer...")
-      try {
-        server.stop(); log.info("Server stopped")
-      }
-      catch {
-        case e: Exception => log.error("Error during shutdown", e)
-      }
+      stopServer("API server", apiServer)
+      stopServer("Probe server", probeServer)
     }))
 
-  private def createServer(): Server = {
-    val server = new Server(createThreadPool())
+  private def stopServer(name: String, server: Server): Unit =
+    try {
+      server.stop(); log.info(s"$name stopped")
+    }
+    catch {
+      case e: Exception => log.error(s"Error stopping $name", e)
+    }
 
-    val metrics = new SparkSubmitMetrics()
-    val submitter = new SparkSubmitter(new KubernetesClientProvider())
+  private def createApiServer(metrics: SparkSubmitMetrics, submitter: SparkSubmitter): Server = {
+    val server = new Server(createApiThreadPool())
 
     val (apiConnector, certReloadWatcher) = createApiConnector(server)
     server.addConnector(apiConnector)
-    server.addConnector(createProbeConnector(server))
 
-    val handlers = new HandlerList()
-    handlers.addHandler(createApiContext(metrics, submitter, certReloadWatcher))
-    handlers.addHandler(createProbeContext(metrics))
-    server.setHandler(handlers)
+    server.setHandler(createApiContext(metrics, submitter, certReloadWatcher))
     server.setStopTimeout(ServerConfig.Server.shutdownTimeoutMs)
     server
   }
 
-  private def createThreadPool(): QueuedThreadPool = {
+  private def createProbeServer(metrics: SparkSubmitMetrics, apiServer: Server): Server = {
+    val server = new Server(createProbeThreadPool())
+    server.addConnector(createProbeConnector(server))
+    server.setHandler(createProbeContext(metrics, apiServer))
+    server
+  }
+
+  private def createApiThreadPool(): QueuedThreadPool = {
     val pool = new QueuedThreadPool(
       ServerConfig.Server.maxThreads,
       ServerConfig.Server.minThreads,
       ServerConfig.Server.threadIdleTimeoutMs.toInt
     )
-    pool.setName("jetty-spark-submitter")
+    pool.setName("spark-submitter-api")
+    pool
+  }
+
+  /** Jetty's default pool; the SERVER_*_THREADS settings apply to the API server only. */
+  private def createProbeThreadPool(): QueuedThreadPool = {
+    val pool = new QueuedThreadPool()
+    pool.setName("spark-submitter-probes")
     pool
   }
 
@@ -159,29 +173,23 @@ object SparkSubmitServer {
   private def createApiContext(
                                 metrics: SparkSubmitMetrics,
                                 submitter: SparkSubmitter,
-                                certReloadWatcher: Option[CertReloadWatcher]): ServletContextHandler = {
-    val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
-    context.setContextPath(ApiPaths.Base)
-    context.setVirtualHosts(Array("@api", "@api-tls"))
-
+                                certReloadWatcher: Option[CertReloadWatcher]): Handler = {
     // Cert reload check filter — first in chain, sub-nanosecond when debounced
-    certReloadWatcher.foreach { watcher =>
-      context.addFilter(new FilterHolder(new CertReloadFilter(watcher)), "/*", java.util.EnumSet.of(DispatcherType.REQUEST))
-    }
+    val filters = certReloadWatcher.map(new CertReloadFilter(_)).toSeq :+ new SparkSubmitMetricsFilter(metrics)
 
-    context.addFilter(new FilterHolder(new SparkSubmitMetricsFilter(metrics)), "/*", java.util.EnumSet.of(DispatcherType.REQUEST))
-
-    context.addServlet(new ServletHolder(new SparkSubmitServlet(submitter)), ApiPaths.SparkSubmit)
-    context
+    SparkServletContextFactory.create(
+      ApiPaths.Base,
+      servlets = Seq(ApiPaths.SparkSubmit -> new SparkSubmitServlet(submitter)),
+      filters = filters)
   }
 
-  private def createProbeContext(metrics: SparkSubmitMetrics): ServletContextHandler = {
-    val context = new ServletContextHandler(ServletContextHandler.NO_SESSIONS)
-    context.setContextPath(ManagementPaths.Base)
-    context.setVirtualHosts(Array("@probes"))
-
-    context.addServlet(new ServletHolder(new MetricsServlet(metrics)), ManagementPaths.Metrics)
-    context.addServlet(new ServletHolder(new HealthServlet), ManagementPaths.Health)
-    context
-  }
+  private def createProbeContext(metrics: SparkSubmitMetrics, apiServer: Server): Handler =
+    SparkServletContextFactory.create(
+      ManagementPaths.Base,
+      servlets = Seq(
+        ManagementPaths.Metrics -> new MetricsServlet(metrics),
+        ManagementPaths.Liveness -> new LivenessServlet,
+        ManagementPaths.Health -> new LivenessServlet,
+        ManagementPaths.Readiness -> new ReadinessServlet(() => apiServer.isStarted)),
+      filters = Nil)
 }

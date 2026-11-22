@@ -27,6 +27,9 @@ object ApiPaths {
 object ManagementPaths {
   val Base = "/"
   val Metrics = "/metrics"
+  val Liveness = "/livez"
+  val Readiness = "/readyz"
+  /** Alias of [[Liveness]]. */
   val Health = "/healthz"
 }
 

@@ -56,7 +56,7 @@ kubectl -n spark-jobs get pod <driver_pod_name> -w
 kubectl -n spark-jobs logs <driver_pod_name> | grep "Pi is roughly"
 ```
 
-Health and metrics are on the probe port: `curl localhost:8081/healthz` and `curl localhost:8081/metrics`.
+Health and metrics are on the probe port: `curl localhost:8081/readyz` and `curl localhost:8081/metrics`.
 
 ## API
 
@@ -67,7 +67,9 @@ Dual-port architecture — API and probes are served on separate ports:
 | 8080 (API) | POST | `/api/v1/spark-submit` | Submit a Spark job |
 | 8080 (API) | POST | `/api/v1/spark-submit?dryRun=true` | Validate without creating K8s resources |
 | 8080 (API) | GET | `/api/v1/spark-submit` | Readiness check — validates TLS/cert chain, returns usage hint |
-| 8081 (Probes) | GET | `/healthz` | K8s liveness/readiness probe |
+| 8081 (Probes) | GET | `/livez` | Liveness probe: `200` while the process answers |
+| 8081 (Probes) | GET | `/readyz` | Readiness probe: `200` while the API port accepts requests, `503` while it starts or shuts down |
+| 8081 (Probes) | GET | `/healthz` | Same as `/livez`, kept for existing probe configurations |
 | 8081 (Probes) | GET | `/metrics` | Prometheus metrics (text format) |
 
 ### Metrics
@@ -209,7 +211,7 @@ All configuration via environment variables:
 | `PORT` | `8080` | API port (HTTP or HTTPS) |
 | `PROBE_PORT` | `8081` | Probe/metrics port (always HTTP) |
 | `SERVER_ADDRESS` | `0.0.0.0` | Bind address |
-| `SERVER_MAX_THREADS` | `200` | Max Jetty threads |
+| `SERVER_MAX_THREADS` | `200` | Max server threads for the API port (the probe port has its own pool) |
 | `SHUTDOWN_TIMEOUT_MS` | `30000` | Graceful shutdown timeout |
 
 #### TLS
@@ -295,10 +297,10 @@ ports:
     containerPort: 8081
 livenessProbe:
   httpGet:
-    path: /healthz
+    path: /livez
     port: probes
 readinessProbe:
   httpGet:
-    path: /healthz
+    path: /readyz
     port: probes
 ```
