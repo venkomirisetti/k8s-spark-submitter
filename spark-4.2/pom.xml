@@ -28,8 +28,9 @@
         <log4j.version>2.25.4</log4j.version>
         <spark.image>docker.io/library/spark:4.2.1</spark.image>
 
-        <!-- Spark 4.2 moved its shaded Jetty from 11 to 12 (servlet 6, ee10 package). -->
-        <jetty.compat>jetty12</jetty.compat>
+        <!-- Spark 4.2 shades Jetty 12, so compile a copy of spark-common without its Jetty 11
+             SparkSubmitServer; this module's src/ has the Jetty 12 one. -->
+        <spark.common.dir>${project.build.directory}/spark-common-jetty12</spark.common.dir>
     </properties>
 
     <dependencies>
@@ -165,6 +166,28 @@
             <plugin>
                 <groupId>org.scalatest</groupId>
                 <artifactId>scalatest-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>jetty12-common-copy</id>
+                        <phase>initialize</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <delete dir="${spark.common.dir}"/>
+                                <copy todir="${spark.common.dir}">
+                                    <fileset dir="${project.basedir}/../spark-common">
+                                        <exclude name="src/main/scala/io/spark/k8s/submit/SparkSubmitServer.scala"/>
+                                    </fileset>
+                                </copy>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

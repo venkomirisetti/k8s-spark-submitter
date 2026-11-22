@@ -96,12 +96,10 @@ release 17, which runs on Java 17.
 Spark 3.5 bundles Jetty 9, which uses `javax.servlet`, so `spark-3.5` compiles a `javax.servlet` copy of
 `spark-common` into `spark-3.5/target/spark-common-javax`.
 
-Spark 4.2 moved its shaded Jetty from 11 to 12, which moved the servlet classes to the `ee10` package and
-removed `HandlerList`. The Jetty-specific calls live in `JettyCompat`, with one copy per Jetty API in
-`spark-common/src/main/jetty9-11` (Spark 3.5 to 4.1) and `spark-common/src/main/jetty12` (Spark 4.2 and
-later). A module selects one with the `jetty.compat` property, which defaults to `jetty9-11`.
-Spark 4.2 also creates a NetworkPolicy for every application, so the submitter's RBAC needs
-`networkpolicies` (the chart grants it).
+Spark 4.2 shades Jetty 12, which moved the servlet classes to the `ee10` package and removed `HandlerList`,
+so `spark-4.2` has its own Jetty 12 `SparkSubmitServer` in `src/` and compiles a copy of `spark-common`
+without the shared one into `spark-4.2/target/spark-common-jetty12`. Spark 4.2 also creates a NetworkPolicy
+for every application, so the submitter's RBAC needs `networkpolicies` (the chart grants it).
 
 `make` targets build `spark-4.0` by default. Select a module with `SPARK_MODULE`:
 
