@@ -14,11 +14,14 @@
     <modules>
         <module>spark-3.5</module>
         <module>spark-4.0</module>
+        <module>spark-4.2</module>
     </modules>
 
     <properties>
         <!-- Shared sources; spark-3.5 points this at its javax copy. -->
         <spark.common.dir>${project.basedir}/../spark-common</spark.common.dir>
+        <!-- Jetty API source dir under spark-common/src/main: jetty9-11 (Spark 3.5 to 4.1) or jetty12 (Spark 4.2+). -->
+        <jetty.compat>jetty9-11</jetty.compat>
 
         <!-- Versions shared by all modules -->
         <scalatest.version>3.2.17</scalatest.version>
@@ -91,7 +94,10 @@
                             <phase>generate-sources</phase>
                             <goals><goal>add-source</goal></goals>
                             <configuration>
-                                <sources><source>${spark.common.dir}/src/main/scala</source></sources>
+                                <sources>
+                                    <source>${spark.common.dir}/src/main/scala</source>
+                                    <source>${spark.common.dir}/src/main/${jetty.compat}/scala</source>
+                                </sources>
                             </configuration>
                         </execution>
                         <execution>

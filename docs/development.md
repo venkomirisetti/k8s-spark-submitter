@@ -81,18 +81,27 @@ pom.xml         Parent: module list, shared plugin configuration, version-indepe
 spark-common/   Sources and tests shared by every Spark version (no pom), compiled by each version module
 spark-3.5/      Spark 3.5 module: its versions, dependencies, and src/ with the classes that use Spark internals
 spark-4.0/      Spark 4.0 module: its versions, dependencies, and src/ with the classes that use Spark internals
+spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with the classes that use Spark internals
 ```
 
 | Spark | Module | Artifact | Java | Scala | Base image |
 | --- | --- | --- | --- | --- | --- |
 | 3.5.x | `spark-3.5` | `spark-submitter-3.5` | 17 | 2.12 | `docker.io/library/spark:3.5.9-java17` |
 | 4.0.x | `spark-4.0` | `spark-submitter-4.0` | 17 | 2.13 | `docker.io/library/spark:4.0.1` |
+| 4.2.x | `spark-4.2` | `spark-submitter-4.2` | 17 | 2.13 | `docker.io/library/spark:4.2.1` |
 
 Builds need JDK 17 or later. Use a Java 17 Spark image: the default `spark:3.5.9` image runs Java 11.
 The Java release is `maven.compiler.release` in each module pom. Scala 2.12 emits Java 8 bytecode even with
 release 17, which runs on Java 17.
 Spark 3.5 bundles Jetty 9, which uses `javax.servlet`, so `spark-3.5` compiles a `javax.servlet` copy of
 `spark-common` into `spark-3.5/target/spark-common-javax`.
+
+Spark 4.2 moved its shaded Jetty from 11 to 12, which moved the servlet classes to the `ee10` package and
+removed `HandlerList`. The Jetty-specific calls live in `JettyCompat`, with one copy per Jetty API in
+`spark-common/src/main/jetty9-11` (Spark 3.5 to 4.1) and `spark-common/src/main/jetty12` (Spark 4.2 and
+later). A module selects one with the `jetty.compat` property, which defaults to `jetty9-11`.
+Spark 4.2 also creates a NetworkPolicy for every application, so the submitter's RBAC needs
+`networkpolicies` (the chart grants it).
 
 `make` targets build `spark-4.0` by default. Select a module with `SPARK_MODULE`:
 
@@ -107,7 +116,7 @@ the parent's `<modules>`.
 
 The classes in `org.apache.spark.deploy` (`K8sSparkSubmitArgsParser`, `K8sSparkClient`) call Spark's
 package-private APIs, so each module keeps its own copy in `src/`, with its tests. They are identical for
-3.5 and 4.0 today; change them per module when a Spark version's internals differ.
+3.5, 4.0 and 4.2 today; change them per module when a Spark version's internals differ.
 
 ## Docker
 

@@ -6,7 +6,7 @@ Install the chart, submit SparkPi, and watch the driver pod. The examples use a 
 both the submitter and the jobs.
 
 **1. Install the submitter.** The chart runs the Spark 4.0.1 image by default; add
-`--set image.tag=3.5.9-latest` for Spark 3.5. The container has a read-only root filesystem, so mount an
+`--set image.tag=4.2.1-latest` for Spark 4.2 or `--set image.tag=3.5.9-latest` for Spark 3.5. The container has a read-only root filesystem, so mount an
 `emptyDir` at `/tmp` for Spark's temporary files.
 
 ```bash
