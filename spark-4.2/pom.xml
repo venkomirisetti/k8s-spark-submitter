@@ -24,6 +24,7 @@
         <jackson.version>2.21.2</jackson.version>
         <!-- From Jackson 2.20, jackson-annotations has no patch version -->
         <jackson-annotations.version>2.21</jackson-annotations.version>
+        <jakarta-servlet.version>6.0.0</jakarta-servlet.version>
         <slf4j.version>2.0.17</slf4j.version>
         <log4j.version>2.25.4</log4j.version>
         <spark.image>docker.io/library/spark:4.2.1</spark.image>
@@ -38,7 +39,7 @@
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
-            <version>6.0.0</version>
+            <version>${jakarta-servlet.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
