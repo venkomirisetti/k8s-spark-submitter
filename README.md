@@ -34,6 +34,7 @@ To use it with the Spark Operator, see their
 
 | Spark | Image tags | Base image |
 | --- | --- | --- |
+| 4.1 | `<spark-version>-<build\|latest>`<br>`4.1-<build\|latest>` | `docker.io/library/spark:4.1.4` |
 | 4.0 | `<spark-version>-<build\|latest>`<br>`4.0-<build\|latest>` | `docker.io/library/spark:4.0.1` |
 | 3.5 | `<spark-version>-<build\|latest>`<br>`3.5-<build\|latest>` | `docker.io/library/spark:3.5.9-java17` |
 
