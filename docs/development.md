@@ -81,6 +81,7 @@ pom.xml         Parent: module list, shared plugin configuration, version-indepe
 spark-common/   Sources and tests shared by every Spark version (no pom), compiled by each version module
 spark-3.5/      Spark 3.5 module: its versions, dependencies, and src/ with the classes that use Spark internals
 spark-4.0/      Spark 4.0 module: its versions, dependencies, and src/ with the classes that use Spark internals
+spark-4.1/      Spark 4.1 module: its versions, dependencies, and src/ with the classes that use Spark internals
 spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with the classes that use Spark internals
 ```
 
@@ -88,6 +89,7 @@ spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with the 
 | --- | --- | --- | --- | --- | --- |
 | 3.5.x | `spark-3.5` | `spark-submitter-3.5` | 17 | 2.12 | `docker.io/library/spark:3.5.9-java17` |
 | 4.0.x | `spark-4.0` | `spark-submitter-4.0` | 17 | 2.13 | `docker.io/library/spark:4.0.1` |
+| 4.1.x | `spark-4.1` | `spark-submitter-4.1` | 17 | 2.13 | `docker.io/library/spark:4.1.4` |
 | 4.2.x | `spark-4.2` | `spark-submitter-4.2` | 17 | 2.13 | `docker.io/library/spark:4.2.1` |
 
 Builds need JDK 17 or later. Use a Java 17 Spark image: the default `spark:3.5.9` image runs Java 11.
@@ -116,7 +118,7 @@ the parent's `<modules>`.
 
 The classes in `org.apache.spark.deploy` (`K8sSparkSubmitArgsParser`, `K8sSparkClient`) call Spark's
 package-private APIs, so each module keeps its own copy in `src/`, with its tests. They are identical for
-3.5, 4.0 and 4.2 today; change them per module when a Spark version's internals differ.
+3.5, 4.0, 4.1 and 4.2 today; change them per module when a Spark version's internals differ.
 
 ## Docker
 
