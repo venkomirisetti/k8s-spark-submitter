@@ -6,7 +6,8 @@ Install the chart, submit SparkPi, and watch the driver pod. The examples use a 
 both the submitter and the jobs.
 
 **1. Install the submitter.** The chart runs the Spark 4.0.1 image by default; add
-`--set image.tag=4.1.4-latest` for Spark 4.1 or `--set image.tag=3.5.9-latest` for Spark 3.5.
+`--set image.tag=4.2.1-latest` for Spark 4.2, `--set image.tag=4.1.4-latest` for Spark 4.1 or
+`--set image.tag=3.5.9-latest` for Spark 3.5.
 The container has a read-only root filesystem, so mount an `emptyDir` at `/tmp` for Spark's
 temporary files.
 
@@ -47,9 +48,10 @@ curl -s -X POST localhost:8080/api/v1/spark-submit -H 'Content-Type: application
 }'
 ```
 
-Use a job image with the same Spark version as the submitter. For Spark 4.1, use the
-`docker.io/library/spark:4.1.4` image. For Spark 3.5, use the `docker.io/library/spark:3.5.9-java17`
-image and `spark-examples_2.12-3.5.9.jar`. A `201` response includes the `driver_pod_name`.
+Use a job image with the same Spark version as the submitter: `docker.io/library/spark:4.2.1` for
+Spark 4.2 or `docker.io/library/spark:4.1.4` for Spark 4.1. For Spark 3.5, use the
+`docker.io/library/spark:3.5.9-java17` image and `spark-examples_2.12-3.5.9.jar`. A `201` response
+includes the `driver_pod_name`.
 
 **4. Watch the job.** The submitter doesn't track jobs; use the Kubernetes API.
 
