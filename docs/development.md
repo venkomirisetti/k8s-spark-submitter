@@ -79,10 +79,10 @@ version defaults, so a module that leaves one out fails the build instead of usi
 ```text
 pom.xml         Parent: module list, shared plugin configuration, version-independent dependencies
 spark-common/   Sources and tests shared by every Spark version (no pom), compiled by each version module
-spark-3.5/      Spark 3.5 module: its versions, dependencies, and src/ with the classes that use Spark internals
-spark-4.0/      Spark 4.0 module: its versions, dependencies, and src/ with the classes that use Spark internals
-spark-4.1/      Spark 4.1 module: its versions, dependencies, and src/ with the classes that use Spark internals
-spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with the classes that use Spark internals
+spark-3.5/      Spark 3.5 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
+spark-4.0/      Spark 4.0 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
+spark-4.1/      Spark 4.1 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
+spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
 ```
 
 | Spark | Module | Artifact | Java | Scala | Base image |
@@ -124,9 +124,10 @@ To support a new Spark version, copy the closest module, set its versions and de
 the parent's `<modules>`.
 
 The classes in `org.apache.spark.deploy` (`K8sSparkSubmitArgsParser`, `K8sSparkClient`) call Spark's
-package-private APIs, so each module keeps its own copy in `src/`, with its tests. They are identical for
-3.5, 4.0, 4.1 and 4.2 today; change them per module when a Spark version's internals differ. A new module also
-needs its own `SparkServletContextFactory` for the Jetty version that Spark shades.
+package-private APIs. They are the same for 3.5, 4.0, 4.1 and 4.2, so they live in `spark-common` with their tests
+and each module compiles them against its own Spark version. If a Spark version's internals change, move the affected
+class into that module's `src/` (and the other modules') and change it there. A new module needs its own
+`SparkServletContextFactory` for the Jetty version that Spark shades.
 
 ## Docker
 
