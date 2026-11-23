@@ -83,6 +83,7 @@ spark-3.5/      Spark 3.5 module: its versions, dependencies, and src/ with its 
 spark-4.0/      Spark 4.0 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
 spark-4.1/      Spark 4.1 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
 spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
+spark-4.3/      Spark 4.3 module: its versions, dependencies, and src/ with its `SparkServletContextFactory`
 ```
 
 | Spark | Module | Artifact | Java | Scala | Base image |
@@ -91,6 +92,7 @@ spark-4.2/      Spark 4.2 module: its versions, dependencies, and src/ with its 
 | 4.0.x | `spark-4.0` | `spark-submitter-4.0` | 17 | 2.13 | `docker.io/library/spark:4.0.1` |
 | 4.1.x | `spark-4.1` | `spark-submitter-4.1` | 17 | 2.13 | `docker.io/library/spark:4.1.4` |
 | 4.2.x | `spark-4.2` | `spark-submitter-4.2` | 17 | 2.13 | `docker.io/library/spark:4.2.1` |
+| 4.3.x | `spark-4.3` | `spark-submitter-4.3` | 17 | 2.13 | `docker.io/library/spark:4.3.0` |
 
 Builds need JDK 17 or later. Use a Java 17 Spark image: the default `spark:3.5.9` image runs Java 11.
 The Java release is `maven.compiler.release` in each module pom. Scala 2.12 emits Java 8 bytecode even with
@@ -109,6 +111,7 @@ those versions, so each module implements `ServletContextFactory` as
 | `spark-4.0` | 11 | Plain servlet context |
 | `spark-4.1` | 11 | Plain servlet context |
 | `spark-4.2` | 12 | Uses `ee10.servlet`; wraps the context in a `StatisticsHandler` so stopping waits for in-flight requests |
+| `spark-4.3` | 12 | Same as `spark-4.2` |
 
 `SparkServletContextFactoryTest` in `spark-common` runs against each module's implementation.
 
@@ -124,7 +127,7 @@ To support a new Spark version, copy the closest module, set its versions and de
 the parent's `<modules>`.
 
 The classes in `org.apache.spark.deploy` (`K8sSparkSubmitArgsParser`, `K8sSparkClient`) call Spark's
-package-private APIs. They are the same for 3.5, 4.0, 4.1 and 4.2, so they live in `spark-common` with their tests
+package-private APIs. They are the same for 3.5, 4.0, 4.1, 4.2 and 4.3, so they live in `spark-common` with their tests
 and each module compiles them against its own Spark version. If a Spark version's internals change, move the affected
 class into that module's `src/` (and the other modules') and change it there. A new module needs its own
 `SparkServletContextFactory` for the Jetty version that Spark shades.
